@@ -1,0 +1,29 @@
+linters:
+  enable:
+    - gofmt
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - misspell
+
+run:
+  deadline: 5m
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  gofmt:
+    simplify: true
+  errcheck:
+    check-type-assertions: true
+  staticcheck:
+    checks: ["all"] 
