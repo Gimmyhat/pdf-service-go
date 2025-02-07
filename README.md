@@ -22,9 +22,16 @@ git clone https://github.com/Gimmyhat/pdf-service-go.git
 cd pdf-service-go
 ```
 
-2. Создайте шаблон DOCX в директории `internal/domain/pdf/templates/template.docx`
+2. Переключитесь на нужную ветку:
+   - `main` - стабильная версия
+   - `dev` - ветка разработки
+```bash
+git checkout dev  # для версии в разработке
+```
 
-3. Запустите сервисы:
+3. Создайте шаблон DOCX в директории `internal/domain/pdf/templates/template.docx`
+
+4. Запустите сервисы:
 ```bash
 docker-compose up --build
 ```
@@ -82,3 +89,35 @@ curl -X POST --data-binary @test.json \
 - `internal/pkg/gotenberg` - клиент для работы с Gotenberg
 - `scripts` - Python скрипты для работы с DOCX
 - `docker` - файлы для сборки Docker образов
+
+## Разработка
+
+Проект использует GitFlow для управления версиями:
+
+- `main` - основная ветка, содержит стабильную версию
+- `dev` - ветка разработки, содержит последние изменения
+- Для новых функций создавайте ветки `feature/*` от `dev`
+- Для исправления ошибок создавайте ветки `bugfix/*` от `dev`
+- Для срочных исправлений в production создавайте ветки `hotfix/*` от `main`
+
+### Процесс разработки
+
+1. Создайте новую ветку от `dev`:
+```bash
+git checkout dev
+git pull
+git checkout -b feature/my-feature  # или bugfix/my-fix
+```
+
+2. Внесите изменения и закоммитьте их:
+```bash
+git add .
+git commit -m "Описание изменений"
+```
+
+3. Отправьте изменения в репозиторий:
+```bash
+git push -u origin feature/my-feature
+```
+
+4. Создайте Pull Request в ветку `dev`
