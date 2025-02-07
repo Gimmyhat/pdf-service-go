@@ -59,8 +59,6 @@ def generate_docx(template_path, data_path, output_path):
     
     # Рендерим документ
     doc.render(context)
-    
-    # Сохраняем результат
     doc.save(output_path)
 
 if __name__ == '__main__':
