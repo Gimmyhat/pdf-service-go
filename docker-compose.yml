@@ -1,0 +1,25 @@
+version: '3'
+
+services:
+  pdf-service:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./internal/domain/pdf/templates:/app/internal/domain/pdf/templates
+    environment:
+      - GIN_MODE=release
+      - GOTENBERG_API_URL=http://gotenberg:3000
+    depends_on:
+      - gotenberg
+
+  gotenberg:
+    image: gotenberg/gotenberg:7.10
+    ports:
+      - "3000:3000"
+    command:
+      - "gotenberg"
+      - "--api-port=3000"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+      - "--uno-listener-restart-threshold=0" 
