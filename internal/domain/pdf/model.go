@@ -1,6 +1,9 @@
 package pdf
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // ... existing code ...
 
@@ -27,9 +30,11 @@ type DictionaryValue struct {
 }
 
 type OrganizationInfo struct {
-	ESIA            string `json:"esia"`
-	Name            string `json:"name"`
-	AddressDocument string `json:"addressDocument"`
+	ESIA            string  `json:"esia"`
+	Name            string  `json:"name"`
+	Address         string  `json:"address"`
+	Agent           string  `json:"agent"`
+	AddressDocument *string `json:"addressDocument"`
 }
 
 type IndividualInfo struct {
@@ -51,4 +56,29 @@ type User struct {
 	OID      string `json:"oid"`
 	UserName string `json:"userName"`
 	FullName string `json:"fullName"`
+}
+
+func (r *DocxRequest) GetApplicantInfo() string {
+	switch r.ApplicantType {
+	case "ORGANIZATION":
+		if r.OrganizationInfo != nil {
+			info := r.OrganizationInfo.Name
+			if r.OrganizationInfo.Address != "" {
+				info += ", " + r.OrganizationInfo.Address
+			}
+			if r.OrganizationInfo.Agent != "" {
+				info += ", Представитель: " + r.OrganizationInfo.Agent
+			}
+			return info
+		}
+	case "INDIVIDUAL":
+		if r.IndividualInfo != nil {
+			info := r.IndividualInfo.Name
+			if r.IndividualInfo.ESIA != "" {
+				info += fmt.Sprintf(" (ЕСИА %s)", r.IndividualInfo.ESIA)
+			}
+			return info
+		}
+	}
+	return ""
 }
