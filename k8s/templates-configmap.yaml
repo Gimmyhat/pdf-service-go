@@ -3,6 +3,5 @@ kind: ConfigMap
 metadata:
   name: pdf-service-templates
   namespace: print-serv
-data:
-  # Здесь будет содержимое шаблона в base64
-  "template.docx": "" 
+binaryData:
+  template.docx: {{ .base64Content }} 
