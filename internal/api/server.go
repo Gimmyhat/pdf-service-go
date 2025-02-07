@@ -57,7 +57,11 @@ func (s *Server) SetupRoutes() {
 	// Метрики Prometheus
 	s.Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	s.Router.POST("/generate-pdf", s.Handlers.PDF.GenerateDocx)
+	// API endpoints
+	v1 := s.Router.Group("/api/v1")
+	{
+		v1.POST("/docx", s.Handlers.PDF.GenerateDocx)
+	}
 }
 
 func (s *Server) Start(addr string) error {
