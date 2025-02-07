@@ -10,7 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"pdf-service-go/internal/api/middleware"
+
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
@@ -27,6 +30,9 @@ func NewServer(handlers *Handlers) *Server {
 
 	// Добавляем middleware для восстановления после паники
 	router.Use(gin.Recovery())
+
+	// Добавляем middleware для метрик
+	router.Use(middleware.PrometheusMiddleware())
 
 	// Добавляем middleware для таймаутов
 	router.Use(func(c *gin.Context) {
@@ -47,6 +53,9 @@ func (s *Server) SetupRoutes() {
 	s.Router.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
+
+	// Метрики Prometheus
+	s.Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	s.Router.POST("/generate-pdf", s.Handlers.PDF.GenerateDocx)
 }

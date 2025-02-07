@@ -6,8 +6,6 @@ import (
 	"pdf-service-go/internal/api"
 	"pdf-service-go/internal/api/handlers"
 	"pdf-service-go/internal/domain/pdf"
-
-	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -24,18 +22,11 @@ func main() {
 	pdfHandler := handlers.NewPDFHandler(pdfService)
 	handlers := api.NewHandlers(pdfHandler)
 
-	// Настраиваем роутер
-	router := gin.Default()
-	server := &api.Server{
-		Router:   router,
-		Handlers: handlers,
-	}
-
-	// Настраиваем маршруты
+	// Создаем и настраиваем сервер
+	server := api.NewServer(handlers)
 	server.SetupRoutes()
 
 	// Запускаем сервер
-	log.Println("Starting server on :8080")
 	if err := server.Start(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

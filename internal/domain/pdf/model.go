@@ -1,8 +1,14 @@
 package pdf
 
 import (
+	"errors"
 	"fmt"
 	"time"
+)
+
+// Определяем пользовательские ошибки
+var (
+	ErrTemplateNotFound = errors.New("template file not found")
 )
 
 // ... existing code ...

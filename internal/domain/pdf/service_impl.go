@@ -27,7 +27,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	// Проверяем наличие шаблона
 	templatePath := filepath.Join("internal/domain/pdf/templates", "template.docx")
 	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("template file not found: %w", err)
+		return nil, ErrTemplateNotFound
 	}
 
 	// Создаем временные файлы
