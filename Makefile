@@ -33,8 +33,8 @@ deploy-test: check-image
 	kubectl apply -f k8s/gotenberg-deployment.yaml && \
 	powershell -Command "(Get-Content k8s/pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -" && \
 	kubectl apply -f k8s/hpa.yaml && \
-	kubectl rollout restart deployment/pdf-service -n print-serv && \
-	kubectl rollout status deployment/pdf-service -n print-serv
+	kubectl rollout restart deployment/nas-pdf-service -n print-serv && \
+	kubectl rollout status deployment/nas-pdf-service -n print-serv
 
 deploy-prod: check-image
 	@echo "Deploying version $(VERSION) to production cluster..."
@@ -44,41 +44,39 @@ deploy-prod: check-image
 	kubectl apply -f k8s/gotenberg-deployment.yaml && \
 	powershell -Command "(Get-Content k8s/pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -" && \
 	kubectl apply -f k8s/hpa.yaml && \
-	kubectl rollout restart deployment/pdf-service -n print-serv && \
-	kubectl rollout status deployment/pdf-service -n print-serv
+	kubectl rollout restart deployment/nas-pdf-service -n print-serv && \
+	kubectl rollout status deployment/nas-pdf-service -n print-serv
 
 deploy-all: deploy-test deploy-prod
 
 update-template:
 	@echo "Updating template ConfigMap..."
-	powershell -Command "[Convert]::ToBase64String([IO.File]::ReadAllBytes('internal/domain/pdf/templates/template.docx'))" > template.base64
-	powershell -Command "$$content = Get-Content k8s/templates-configmap.yaml -Raw; $$base64 = Get-Content template.base64; $$content -replace '{{ .base64Content }}',$$base64 | Set-Content k8s/templates-configmap-filled.yaml"
-	del template.base64
+	powershell -ExecutionPolicy Bypass -Command "$$base64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes('internal/domain/pdf/templates/template.docx')); $$yaml = 'apiVersion: v1', 'kind: ConfigMap', 'metadata:', '  name: nas-pdf-service-templates', '  namespace: print-serv', 'binaryData:', '  template.docx: ' + $$base64; Set-Content -Path k8s/templates-configmap-filled.yaml -Value $$yaml"
 
 update-template-test: update-template
 	@echo "Updating template in test cluster..."
 	set "KUBECONFIG=$(TEST_KUBECONFIG)" && \
 	kubectl apply -f k8s/templates-configmap-filled.yaml && \
-	kubectl rollout restart deployment/pdf-service -n print-serv
+	kubectl rollout restart deployment/nas-pdf-service -n print-serv
 
 update-template-prod: update-template
 	@echo "Updating template in production cluster..."
 	set "KUBECONFIG=$(PROD_KUBECONFIG)" && \
 	kubectl apply -f k8s/templates-configmap-filled.yaml && \
-	kubectl rollout restart deployment/pdf-service -n print-serv
+	kubectl rollout restart deployment/nas-pdf-service -n print-serv
 
 check-test:
 	@echo "Checking test cluster status..."
 	set "KUBECONFIG=$(TEST_KUBECONFIG)" && \
-	kubectl get pods -n print-serv && \
-	kubectl get deploy -n print-serv && \
+	kubectl get pods -n print-serv -l "app in (nas-pdf-service,nas-gotenberg)" && \
+	kubectl get deploy -n print-serv -l "app in (nas-pdf-service,nas-gotenberg)" && \
 	kubectl get hpa -n print-serv
 
 check-prod:
 	@echo "Checking production cluster status..."
 	set "KUBECONFIG=$(PROD_KUBECONFIG)" && \
-	kubectl get pods -n print-serv && \
-	kubectl get deploy -n print-serv && \
+	kubectl get pods -n print-serv -l "app in (nas-pdf-service,nas-gotenberg)" && \
+	kubectl get deploy -n print-serv -l "app in (nas-pdf-service,nas-gotenberg)" && \
 	kubectl get hpa -n print-serv
 
 help:

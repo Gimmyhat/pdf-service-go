@@ -1,8 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pdf-service-config
+  name: nas-pdf-service-config
   namespace: print-serv
 data:
-  GOTENBERG_API_URL: "http://gotenberg:3000"
-  GIN_MODE: "release" 
+  GOTENBERG_API_URL: "http://nas-gotenberg:3000"
+  GIN_MODE: "release"
+  LOG_LEVEL: "info" 

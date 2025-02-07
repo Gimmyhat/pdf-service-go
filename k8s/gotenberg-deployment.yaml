@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gotenberg
+  name: nas-gotenberg
   namespace: print-serv
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: gotenberg
+      app: nas-gotenberg
   template:
     metadata:
       labels:
-        app: gotenberg
+        app: nas-gotenberg
     spec:
       containers:
-      - name: gotenberg
+      - name: nas-gotenberg
         image: gotenberg/gotenberg:7.10
         ports:
         - containerPort: 3000
@@ -47,11 +47,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: gotenberg
+  name: nas-gotenberg
   namespace: print-serv
 spec:
   selector:
-    app: gotenberg
+    app: nas-gotenberg
   ports:
   - port: 3000
     targetPort: 3000

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pdf-service-templates
+  name: nas-pdf-service-templates
   namespace: print-serv
 binaryData:
   template.docx: {{ .base64Content }} 

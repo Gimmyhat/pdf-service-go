@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pdf-service
+  name: nas-pdf-service
   namespace: print-serv
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: pdf-service
+      app: nas-pdf-service
   template:
     metadata:
       labels:
-        app: pdf-service
+        app: nas-pdf-service
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
       containers:
-      - name: pdf-service
+      - name: nas-pdf-service
         image: gimmyhat/pdf-service-go:latest
         imagePullPolicy: Always
         ports:
@@ -32,7 +32,7 @@ spec:
             cpu: "500m"
         envFrom:
         - configMapRef:
-            name: pdf-service-config
+            name: nas-pdf-service-config
         volumeMounts:
         - name: templates
           mountPath: /app/internal/domain/pdf/templates
@@ -51,16 +51,16 @@ spec:
       volumes:
       - name: templates
         configMap:
-          name: pdf-service-templates
+          name: nas-pdf-service-templates
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: pdf-service
+  name: nas-pdf-service
   namespace: print-serv
 spec:
   selector:
-    app: pdf-service
+    app: nas-pdf-service
   ports:
   - port: 8080
     targetPort: 8080
