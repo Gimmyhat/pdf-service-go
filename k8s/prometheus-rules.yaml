@@ -92,4 +92,73 @@ spec:
         severity: warning
       annotations:
         summary: Slow PDF generation response time
-        description: 95th percentile of PDF generation time is above 3 seconds for 5 minutes 
+        description: 95th percentile of PDF generation time is above 3 seconds for 5 minutes
+
+    - alert: PDFServiceLowCacheHitRate
+      expr: |
+        sum(rate(template_cache_hits_total[5m])) /
+        (sum(rate(template_cache_hits_total[5m])) + sum(rate(template_cache_misses_total[5m]))) < 0.7
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Низкий процент попаданий в кэш шаблонов"
+        description: "Hit rate кэша шаблонов ниже 70% в течение 15 минут"
+
+    - alert: PDFServiceHighCacheSize
+      expr: sum(template_cache_size_bytes) > 100 * 1024 * 1024
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Большой размер кэша шаблонов"
+        description: "Размер кэша шаблонов превышает 100MB"
+
+    - alert: PDFServiceHighCacheMissRate
+      expr: |
+        sum(rate(template_cache_misses_total[5m])) /
+        (sum(rate(template_cache_hits_total[5m])) + sum(rate(template_cache_misses_total[5m]))) > 0.4
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Высокая частота промахов кэша"
+        description: "Более 40% запросов не находят шаблон в кэше"
+
+    - alert: PDFServiceUnstableCacheSize
+      expr: |
+        abs(
+          (sum(template_cache_size_bytes) - 
+          sum(template_cache_size_bytes offset 5m)) /
+          sum(template_cache_size_bytes offset 5m)
+        ) > 0.3
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Нестабильный размер кэша"
+        description: "Размер кэша изменяется более чем на 30% за 5 минут"
+
+    - alert: PDFServiceCacheMemoryPressure
+      expr: |
+        sum(template_cache_size_bytes) / 
+        sum(container_memory_working_set_bytes{container="pdf-service"}) * 100 > 40
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Высокое потребление памяти кэшем"
+        description: "Кэш использует более 40% рабочей памяти сервиса"
+
+    - alert: PDFServiceCacheEfficiencyDrop
+      expr: |
+        (
+          sum(rate(template_cache_hits_total[30m])) /
+          (sum(rate(template_cache_hits_total[30m])) + sum(rate(template_cache_misses_total[30m])))
+        ) < 0.5
+      for: 30m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Низкая эффективность кэша"
+        description: "Эффективность кэша ниже 50% в течение 30 минут" 

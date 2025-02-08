@@ -8,6 +8,8 @@
 - Конвертация DOCX в PDF с помощью Gotenberg
 - Поддержка циклов и условий в шаблонах
 - Работа в Docker контейнерах
+- Кэширование шаблонов DOCX для оптимизации производительности
+- Метрики и мониторинг через Prometheus
 
 ## Требования
 
@@ -121,3 +123,36 @@ git push -u origin feature/my-feature
 ```
 
 4. Создайте Pull Request в ветку `dev`
+
+## Конфигурация
+
+Сервис настраивается через переменные окружения:
+
+### Основные настройки
+- `PORT` - порт для HTTP сервера (по умолчанию: 8080)
+- `LOG_LEVEL` - уровень логирования (по умолчанию: info)
+
+### Настройки кэширования
+- `DOCX_TEMPLATE_CACHE_TTL` - время жизни кэшированных шаблонов (по умолчанию: 5m)
+
+### Circuit Breaker
+- `DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` - порог ошибок (по умолчанию: 3)
+- `DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT` - таймаут сброса (по умолчанию: 5s)
+- `DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS` - максимум вызовов в полуоткрытом состоянии (по умолчанию: 2)
+- `DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD` - порог успешных вызовов (по умолчанию: 2)
+
+## Метрики
+
+Сервис предоставляет следующие метрики Prometheus:
+
+### Метрики кэширования
+- `template_cache_hits_total` - количество попаданий в кэш шаблонов
+- `template_cache_misses_total` - количество промахов кэша шаблонов
+- `template_cache_size_bytes` - размер кэшированных шаблонов
+- `template_cache_items_total` - общее количество элементов в кэше
+
+### Метрики генерации документов
+- `docx_generation_duration_seconds` - время генерации DOCX
+- `docx_generation_errors_total` - количество ошибок генерации
+- `docx_generation_total` - общее количество попыток генерации
+- `docx_file_size_bytes` - размер сгенерированных файлов

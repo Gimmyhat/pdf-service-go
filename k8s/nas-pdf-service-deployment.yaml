@@ -33,6 +33,16 @@ spec:
               fieldPath: metadata.namespace
         - name: MAX_CONCURRENT_REQUESTS
           value: "4"
+        - name: DOCX_TEMPLATE_CACHE_TTL
+          value: "5m"
+        - name: DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD
+          value: "3"
+        - name: DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT
+          value: "5s"
+        - name: DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS
+          value: "2"
+        - name: DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD
+          value: "2"
         envFrom:
         - configMapRef:
             name: nas-pdf-service-config

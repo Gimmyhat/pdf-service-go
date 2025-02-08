@@ -2,13 +2,19 @@ package docxgen
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"pdf-service-go/internal/pkg/cache"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/logger"
+
+	"encoding/hex"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -60,12 +66,14 @@ type Config struct {
 	SuccessThreshold int
 	PodName          string
 	Namespace        string
+	CacheTTL         time.Duration
 }
 
 // Generator представляет генератор DOCX файлов с Circuit Breaker
 type Generator struct {
 	config Config
 	cb     *circuitbreaker.CircuitBreaker
+	cache  *cache.Cache
 }
 
 // getEnvWithDefault возвращает значение переменной окружения или значение по умолчанию
@@ -106,7 +114,14 @@ func NewGenerator(scriptPath string) *Generator {
 		SuccessThreshold: getEnvIntWithDefault("DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD", 2),
 		PodName:          os.Getenv("POD_NAME"),
 		Namespace:        os.Getenv("POD_NAMESPACE"),
+		CacheTTL:         getEnvDurationWithDefault("DOCX_TEMPLATE_CACHE_TTL", 5*time.Minute),
 	}
+
+	// Запускаем очистку временных файлов
+	tempFileManager.StartCleanupRoutine(
+		getEnvDurationWithDefault("DOCX_TEMP_CLEANUP_INTERVAL", 1*time.Minute),
+		getEnvDurationWithDefault("DOCX_TEMP_MAX_AGE", 5*time.Minute),
+	)
 
 	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		Name:             "docx-generator",
@@ -121,6 +136,7 @@ func NewGenerator(scriptPath string) *Generator {
 	return &Generator{
 		config: config,
 		cb:     cb,
+		cache:  cache.NewCache(config.CacheTTL),
 	}
 }
 
@@ -129,8 +145,61 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	start := time.Now()
 	docxGenerationTotal.WithLabelValues("started").Inc()
 
-	err := g.cb.Execute(ctx, func() error {
-		cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, templatePath, dataPath, outputPath)
+	var tempPath string
+	var err error
+
+	// Создаем временную директорию для файлов этого запроса
+	tempDir, err := os.MkdirTemp("", "docx_gen_")
+	if err != nil {
+		logger.Error("Failed to create temp directory",
+			zap.Error(err))
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Пытаемся получить шаблон из кэша
+	templateName := filepath.Base(templatePath)
+	if cachedTemplate, ok := g.cache.Get(templateName); ok {
+		// Создаем временный файл из кэшированных данных с оригинальным именем
+		tempPath = filepath.Join(tempDir, templateName)
+		if err = os.WriteFile(tempPath, cachedTemplate, 0644); err != nil {
+			logger.Error("Failed to write cached template",
+				zap.Error(err),
+				zap.String("template", templatePath),
+			)
+			return err
+		}
+		templatePath = tempPath
+	} else {
+		// Если шаблона нет в кэше, читаем его и сохраняем
+		templateData, err := ioutil.ReadFile(templatePath)
+		if err != nil {
+			logger.Error("Failed to read template",
+				zap.Error(err),
+				zap.String("template", templatePath),
+			)
+			return err
+		}
+		g.cache.Set(templateName, templateData)
+
+		// Создаем временный файл с оригинальным именем
+		tempPath = filepath.Join(tempDir, templateName)
+		if err = os.WriteFile(tempPath, templateData, 0644); err != nil {
+			logger.Error("Failed to write template",
+				zap.Error(err),
+				zap.String("template", templatePath),
+			)
+			return err
+		}
+		templatePath = tempPath
+	}
+
+	// Создаем временный файл для выходного DOCX со случайным именем
+	outputDocx := filepath.Join(tempDir, fmt.Sprintf("output_%s.docx",
+		hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))))
+
+	err = g.cb.Execute(ctx, func() error {
+		cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, templatePath, dataPath, outputDocx)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			logger.Error("Failed to generate DOCX",
@@ -138,11 +207,30 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 				zap.String("output", string(output)),
 				zap.String("template", templatePath),
 				zap.String("data", dataPath),
-				zap.String("output_path", outputPath),
+				zap.String("output_docx", outputDocx),
 			)
 			docxGenerationErrors.WithLabelValues("python_error").Inc()
 			return err
 		}
+
+		// Копируем сгенерированный файл в целевую директорию
+		outputData, err := os.ReadFile(outputDocx)
+		if err != nil {
+			logger.Error("Failed to read generated DOCX",
+				zap.Error(err),
+				zap.String("path", outputDocx),
+			)
+			return err
+		}
+
+		if err = os.WriteFile(outputPath, outputData, 0644); err != nil {
+			logger.Error("Failed to write output file",
+				zap.Error(err),
+				zap.String("path", outputPath),
+			)
+			return err
+		}
+
 		return nil
 	})
 
