@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nas-pdf-service-monitor
+  namespace: print-serv
+  labels:
+    app: nas-pdf-service
+    release: prometheus
+spec:
+  jobLabel: app
+  selector:
+    matchLabels:
+      app: nas-pdf-service
+  namespaceSelector:
+    matchNames:
+      - print-serv
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 14s 

@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: nas-pdf-service
   namespace: print-serv
+  labels:
+    app: nas-pdf-service
 spec:
   replicas: 2
   selector:
@@ -12,10 +14,6 @@ spec:
     metadata:
       labels:
         app: nas-pdf-service
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: nas-pdf-service
@@ -23,13 +21,16 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
+          name: http
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         envFrom:
         - configMapRef:
             name: nas-pdf-service-config
@@ -39,30 +40,23 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: 8080
+            port: http
           initialDelaySeconds: 10
           periodSeconds: 5
         livenessProbe:
           httpGet:
             path: /health
-            port: 8080
+            port: http
           initialDelaySeconds: 15
           periodSeconds: 10
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
       volumes:
       - name: templates
         configMap:
-          name: nas-pdf-service-templates
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nas-pdf-service
-  namespace: print-serv
-spec:
-  selector:
-    app: nas-pdf-service
-  ports:
-  - port: 8080
-    targetPort: 8080
-    nodePort: 31005
-  type: NodePort 
+          name: nas-pdf-service-templates 

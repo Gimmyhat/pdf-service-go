@@ -31,43 +31,57 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 
-	router := gin.New() // Используем gin.New() вместо gin.Default()
+	// Создаем новый роутер без стандартного логгера
+	router := gin.New()
 
 	// Настройка лимитов
 	router.MaxMultipartMemory = 8 << 20 // 8 MiB
 	logger.Info("Server memory limits configured", zap.String("max_multipart_memory", "8 MiB"))
 
-	// Добавляем middleware для восстановления после паники
-	router.Use(gin.Recovery())
+	// Добавляем middleware для восстановления после паники с использованием zap
+	router.Use(gin.CustomRecoveryWithWriter(nil, func(c *gin.Context, err interface{}) {
+		logger.Error("Panic recovered",
+			zap.Any("error", err),
+			zap.String("path", c.Request.URL.Path),
+		)
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}))
 
-	// Добавляем middleware для фильтрации health check логов
+	// Добавляем middleware для логирования с использованием zap
 	router.Use(func(c *gin.Context) {
 		// Пропускаем логирование для health check
 		if c.Request.URL.Path != "/health" {
-			// Логируем начало запроса
 			start := time.Now()
 			path := c.Request.URL.Path
-			raw := c.Request.URL.RawQuery
+			query := c.Request.URL.RawQuery
 
 			c.Next()
 
-			// Логируем результат запроса
 			latency := time.Since(start)
-			clientIP := c.ClientIP()
-			method := c.Request.Method
 			statusCode := c.Writer.Status()
 
-			if raw != "" {
-				path = path + "?" + raw
+			if statusCode >= 400 {
+				// Логируем ошибки с уровнем Error
+				logger.Error("HTTP Request",
+					zap.String("client_ip", c.ClientIP()),
+					zap.String("method", c.Request.Method),
+					zap.String("path", path),
+					zap.String("query", query),
+					zap.Int("status_code", statusCode),
+					zap.Duration("latency", latency),
+					zap.String("error", c.Errors.String()),
+				)
+			} else {
+				// Логируем успешные запросы с уровнем Info
+				logger.Info("HTTP Request",
+					zap.String("client_ip", c.ClientIP()),
+					zap.String("method", c.Request.Method),
+					zap.String("path", path),
+					zap.String("query", query),
+					zap.Int("status_code", statusCode),
+					zap.Duration("latency", latency),
+				)
 			}
-
-			logger.Info("HTTP Request",
-				zap.String("client_ip", clientIP),
-				zap.String("method", method),
-				zap.String("path", path),
-				zap.Int("status_code", statusCode),
-				zap.Duration("latency", latency),
-			)
 		} else {
 			c.Next()
 		}
@@ -101,6 +115,17 @@ func (s *Server) SetupRoutes() {
 	// Метрики Prometheus
 	s.Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	// Тестовый эндпоинт для проверки логирования ошибок
+	s.Router.GET("/test-error", func(c *gin.Context) {
+		logger.Error("Test error endpoint called",
+			zap.String("test_field", "test_value"),
+			zap.Int("error_code", 500),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Test error message",
+		})
+	})
+
 	// API endpoints
 	v1 := s.Router.Group("/api/v1")
 	{
@@ -113,6 +138,7 @@ func (s *Server) SetupRoutes() {
 	logger.Info("Routes configured",
 		logger.Field("health_endpoint", "/health"),
 		logger.Field("metrics_endpoint", "/metrics"),
+		logger.Field("test_endpoint", "/test-error"),
 		logger.Field("api_endpoints", []string{"/api/v1/docx", "/generate-pdf"}),
 	)
 }

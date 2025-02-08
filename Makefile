@@ -57,7 +57,7 @@ deploy-test: check-image deploy-grafana
 	kubectl apply -f k8s/configmap.yaml && \
 	kubectl apply -f k8s/templates-configmap-filled.yaml && \
 	kubectl apply -f k8s/gotenberg-deployment.yaml && \
-	powershell -Command "(Get-Content k8s/pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -" && \
+	powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -" && \
 	kubectl apply -f k8s/hpa.yaml && \
 	kubectl rollout restart deployment/nas-pdf-service -n print-serv && \
 	kubectl rollout status deployment/nas-pdf-service -n print-serv
@@ -68,7 +68,7 @@ deploy-prod: check-image
 	kubectl apply -f k8s/configmap.yaml && \
 	kubectl apply -f k8s/templates-configmap-filled.yaml && \
 	kubectl apply -f k8s/gotenberg-deployment.yaml && \
-	powershell -Command "(Get-Content k8s/pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -" && \
+	powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -" && \
 	kubectl apply -f k8s/hpa.yaml && \
 	kubectl rollout restart deployment/nas-pdf-service -n print-serv && \
 	kubectl rollout status deployment/nas-pdf-service -n print-serv
