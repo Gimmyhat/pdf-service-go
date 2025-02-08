@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-prometheus-config
+  namespace: print-serv
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: 'pdf-service'
+        static_configs:
+          - targets: ['nas-pdf-service:8080']
+        metrics_path: '/metrics'
+      - job_name: 'gotenberg'
+        static_configs:
+          - targets: ['nas-gotenberg:3000']
+        metrics_path: '/prometheus/metrics'
+        scheme: http
+        scrape_interval: 5s
+        scrape_timeout: 5s
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-prometheus
+  namespace: print-serv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nas-prometheus
+  template:
+    metadata:
+      labels:
+        app: nas-prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:latest
+        args:
+        - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--storage.tsdb.path=/prometheus"
+        - "--web.enable-lifecycle"
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+        - name: storage
+          mountPath: /prometheus
+      volumes:
+      - name: config
+        configMap:
+          name: nas-prometheus-config
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-prometheus
+  namespace: print-serv
+spec:
+  selector:
+    app: nas-prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+  type: ClusterIP 

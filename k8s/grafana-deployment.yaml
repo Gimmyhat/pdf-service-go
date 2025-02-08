@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-grafana
+  namespace: print-serv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nas-grafana
+  template:
+    metadata:
+      labels:
+        app: nas-grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: admin  # В продакшене использовать секрет!
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: "false"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        - name: grafana-dashboards
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+      - name: grafana-storage
+        emptyDir: {}
+      - name: grafana-dashboards
+        configMap:
+          name: nas-grafana-dashboards
+      - name: grafana-datasources
+        configMap:
+          name: nas-grafana-datasources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-grafana
+  namespace: print-serv
+spec:
+  selector:
+    app: nas-grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: ClusterIP 
