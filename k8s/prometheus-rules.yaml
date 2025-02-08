@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nas-pdf-service-alerts
+  namespace: print-serv
+  labels:
+    app: nas-pdf-service
+    prometheus: k8s
+    role: alert-rules
+spec:
+  groups:
+  - name: circuit-breaker
+    rules:
+    - alert: NasPdfServiceCircuitBreakerOpen
+      expr: circuit_breaker_state{name="gotenberg", job="nas-pdf-service"} == 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Circuit Breaker is Open"
+        description: "Circuit Breaker for {{ $labels.name }} in pod {{ $labels.pod_name }} has been Open for 5 minutes"
+        
+    - alert: NasPdfServiceHighCircuitBreakerFailureRate
+      expr: rate(circuit_breaker_failures_total{name="gotenberg", job="nas-pdf-service"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High Circuit Breaker failure rate"
+        description: "Circuit Breaker for {{ $labels.name }} in pod {{ $labels.pod_name }} has high failure rate"
+        
+    - alert: NasPdfServiceCircuitBreakerUnhealthy
+      expr: circuit_breaker_pod_health{name="gotenberg", job="nas-pdf-service"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Circuit Breaker is Unhealthy"
+        description: "Circuit Breaker health check failing for {{ $labels.name }} in pod {{ $labels.pod_name }}"
+        
+    - alert: NasPdfServiceCircuitBreakerSlowRecovery
+      expr: histogram_quantile(0.95, rate(circuit_breaker_recovery_duration_seconds_bucket{name="gotenberg", job="nas-pdf-service"}[30m])) > 300
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Circuit Breaker slow recovery"
+        description: "Circuit Breaker for {{ $labels.name }} in pod {{ $labels.pod_name }} is taking too long to recover" 
