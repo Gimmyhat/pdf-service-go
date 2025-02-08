@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,9 +10,11 @@ import (
 	"time"
 
 	"pdf-service-go/internal/api/middleware"
+	"pdf-service-go/internal/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -23,13 +24,51 @@ type Server struct {
 }
 
 func NewServer(handlers *Handlers) *Server {
-	router := gin.Default()
+	// Отключаем стандартный логгер gin
+	gin.SetMode(gin.ReleaseMode)
+	gin.DisableConsoleColor()
+
+	router := gin.New() // Используем gin.New() вместо gin.Default()
 
 	// Настройка лимитов
 	router.MaxMultipartMemory = 8 << 20 // 8 MiB
+	logger.Info("Server memory limits configured", zap.String("max_multipart_memory", "8 MiB"))
 
 	// Добавляем middleware для восстановления после паники
 	router.Use(gin.Recovery())
+
+	// Добавляем middleware для фильтрации health check логов
+	router.Use(func(c *gin.Context) {
+		// Пропускаем логирование для health check
+		if c.Request.URL.Path != "/health" {
+			// Логируем начало запроса
+			start := time.Now()
+			path := c.Request.URL.Path
+			raw := c.Request.URL.RawQuery
+
+			c.Next()
+
+			// Логируем результат запроса
+			latency := time.Since(start)
+			clientIP := c.ClientIP()
+			method := c.Request.Method
+			statusCode := c.Writer.Status()
+
+			if raw != "" {
+				path = path + "?" + raw
+			}
+
+			logger.Info("HTTP Request",
+				zap.String("client_ip", clientIP),
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Int("status_code", statusCode),
+				zap.Duration("latency", latency),
+			)
+		} else {
+			c.Next()
+		}
+	})
 
 	// Добавляем middleware для метрик
 	router.Use(middleware.PrometheusMiddleware())
@@ -41,6 +80,8 @@ func NewServer(handlers *Handlers) *Server {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	})
+
+	logger.Info("Server middleware configured")
 
 	return &Server{
 		Router:   router,
@@ -62,6 +103,15 @@ func (s *Server) SetupRoutes() {
 	{
 		v1.POST("/docx", s.Handlers.PDF.GenerateDocx)
 	}
+
+	// Поддержка старого endpoint'а для обратной совместимости
+	s.Router.POST("/generate-pdf", s.Handlers.PDF.GenerateDocx)
+
+	logger.Info("Routes configured",
+		logger.Field("health_endpoint", "/health"),
+		logger.Field("metrics_endpoint", "/metrics"),
+		logger.Field("api_endpoints", []string{"/api/v1/docx", "/generate-pdf"}),
+	)
 }
 
 func (s *Server) Start(addr string) error {
@@ -78,8 +128,9 @@ func (s *Server) Start(addr string) error {
 
 	// Запускаем сервер в горутине
 	go func() {
-		log.Printf("Starting server on %s", addr)
+		logger.Info("Starting server", logger.Field("address", addr))
 		if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Server error", logger.Field("error", err))
 			errChan <- err
 		}
 	}()
@@ -91,9 +142,10 @@ func (s *Server) Start(addr string) error {
 	// Ожидаем сигнал или ошибку
 	select {
 	case err := <-errChan:
+		logger.Error("Server failed", logger.Field("error", err))
 		return err
 	case sig := <-quit:
-		log.Printf("Received signal: %v", sig)
+		logger.Info("Received signal", logger.Field("signal", sig))
 		return s.Stop()
 	}
 }
@@ -104,13 +156,14 @@ func (s *Server) Stop() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		log.Println("Shutting down server...")
+		logger.Info("Shutting down server...")
 
 		// Останавливаем прием новых запросов
 		if err := s.server.Shutdown(ctx); err != nil {
-			log.Printf("Server forced to shutdown: %v", err)
+			logger.Error("Server forced to shutdown", logger.Field("error", err))
 			return err
 		}
+		logger.Info("Server stopped gracefully")
 	}
 	return nil
 }

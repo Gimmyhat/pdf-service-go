@@ -31,6 +31,8 @@ spec:
         - "--chromium-disable-javascript=true"
         - "--chromium-allow-list=file:///tmp/.*"
         - "--uno-listener-restart-threshold=0"
+        - "--prometheus-metrics=true"
+        - "--prometheus-metrics-path=/metrics"
         readinessProbe:
           httpGet:
             path: /health

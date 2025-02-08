@@ -10,6 +10,7 @@ services:
     environment:
       - GIN_MODE=release
       - GOTENBERG_API_URL=http://gotenberg:3000
+      - LOG_LEVEL=debug  # Для разработки используем debug уровень
     depends_on:
       - gotenberg
 

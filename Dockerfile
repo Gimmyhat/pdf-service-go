@@ -39,6 +39,10 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/internal/domain/pdf/templates ./internal/domain/pdf/templates
 
+# Настройка переменных окружения
+ENV GIN_MODE=release \
+    LOG_LEVEL=info
+
 EXPOSE 8080
 
 CMD ["./main"] 
