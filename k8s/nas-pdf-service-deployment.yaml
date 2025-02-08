@@ -31,12 +31,16 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: MAX_CONCURRENT_REQUESTS
+          value: "4"
         envFrom:
         - configMapRef:
             name: nas-pdf-service-config
         volumeMounts:
         - name: templates
           mountPath: /app/internal/domain/pdf/templates
+        - name: tmp-storage
+          mountPath: /tmp
         readinessProbe:
           httpGet:
             path: /health
@@ -51,12 +55,14 @@ spec:
           periodSeconds: 10
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "384Mi"
+            cpu: "300m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "768Mi"
+            cpu: "600m"
       volumes:
       - name: templates
         configMap:
-          name: nas-pdf-service-templates 
+          name: nas-pdf-service-templates
+      - name: tmp-storage
+        emptyDir: {} 

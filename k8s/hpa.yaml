@@ -1,13 +1,38 @@
-apiVersion: autoscaling/v1
+apiVersion: autoscaling/v2beta2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: pdf-service-hpa
+  name: nas-pdf-service-hpa
   namespace: print-serv
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: pdf-service
+    name: nas-pdf-service
   minReplicas: 2
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 70 
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 120 
