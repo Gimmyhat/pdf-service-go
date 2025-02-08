@@ -12,7 +12,7 @@ spec:
   - name: circuit-breaker
     rules:
     - alert: NasPdfServiceCircuitBreakerOpen
-      expr: circuit_breaker_state{name="gotenberg", job="pdf-service"} == 1
+      expr: circuit_breaker_state{name=~"gotenberg|docx_generator", job="pdf-service"} == 1
       for: 5m
       labels:
         severity: warning
@@ -21,7 +21,7 @@ spec:
         description: "Circuit Breaker for {{ $labels.name }} in pod {{ $labels.pod_name }} has been Open for 5 minutes"
         
     - alert: NasPdfServiceHighCircuitBreakerFailureRate
-      expr: rate(circuit_breaker_failures_total{name="gotenberg", job="pdf-service"}[5m]) > 0.1
+      expr: rate(circuit_breaker_failures_total{name=~"gotenberg|docx_generator", job="pdf-service"}[5m]) > 0.1
       for: 5m
       labels:
         severity: warning
@@ -30,7 +30,7 @@ spec:
         description: "Circuit Breaker for {{ $labels.name }} in pod {{ $labels.pod_name }} has high failure rate"
         
     - alert: NasPdfServiceCircuitBreakerUnhealthy
-      expr: circuit_breaker_pod_health{name="gotenberg", job="pdf-service"} == 0
+      expr: circuit_breaker_pod_health{name=~"gotenberg|docx_generator", job="pdf-service"} == 0
       for: 5m
       labels:
         severity: critical
@@ -39,7 +39,7 @@ spec:
         description: "Circuit Breaker health check failing for {{ $labels.name }} in pod {{ $labels.pod_name }}"
         
     - alert: NasPdfServiceCircuitBreakerSlowRecovery
-      expr: histogram_quantile(0.95, rate(circuit_breaker_recovery_duration_seconds_bucket{name="gotenberg", job="pdf-service"}[30m])) > 300
+      expr: histogram_quantile(0.95, rate(circuit_breaker_recovery_duration_seconds_bucket{name=~"gotenberg|docx_generator", job="pdf-service"}[30m])) > 300
       for: 15m
       labels:
         severity: warning

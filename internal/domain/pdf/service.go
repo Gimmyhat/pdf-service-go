@@ -16,4 +16,10 @@ type Service interface {
 
 	// IsCircuitBreakerHealthy возвращает true, если Circuit Breaker в здоровом состоянии
 	IsCircuitBreakerHealthy() bool
+
+	// GetDocxGeneratorState возвращает текущее состояние DOCX генератора
+	GetDocxGeneratorState() circuitbreaker.State
+
+	// IsDocxGeneratorHealthy возвращает true, если DOCX генератор в здоровом состоянии
+	IsDocxGeneratorHealthy() bool
 }

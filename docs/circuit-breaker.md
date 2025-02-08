@@ -1,13 +1,17 @@
 # Circuit Breaker в PDF Service
 
 ## Обзор
-Circuit Breaker реализован для защиты сервиса от каскадных отказов при проблемах с Gotenberg. Он автоматически отслеживает состояние Gotenberg и предотвращает перегрузку системы при сбоях.
+В сервисе реализованы два Circuit Breaker'а для защиты от каскадных отказов:
+1. Gotenberg Circuit Breaker - защищает от проблем с сервисом конвертации PDF
+2. DOCX Generator Circuit Breaker - защищает от проблем с генератором DOCX файлов
+
+Оба Circuit Breaker'а автоматически отслеживают состояние соответствующих компонентов и предотвращают перегрузку системы при сбоях.
 
 ## Состояния Circuit Breaker
 
 1. **Closed (Закрыт)**
    - Нормальное рабочее состояние
-   - Все запросы проходят к Gotenberg
+   - Все запросы проходят к сервису
    - Отслеживаются ошибки
 
 2. **Open (Открыт)**
@@ -22,13 +26,20 @@ Circuit Breaker реализован для защиты сервиса от к�
 
 ## Конфигурация
 
-Настройка через переменные окружения:
-
+### Gotenberg Circuit Breaker
 ```yaml
 CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"     # Порог ошибок для перехода в Open
 CIRCUIT_BREAKER_RESET_TIMEOUT: "10s"       # Время до перехода в Half-Open
 CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS: "2"   # Макс. запросов в Half-Open
 CIRCUIT_BREAKER_SUCCESS_THRESHOLD: "2"      # Успешных запросов для возврата в Closed
+```
+
+### DOCX Generator Circuit Breaker
+```yaml
+DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD: "3"     # Порог ошибок для перехода в Open
+DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT: "5s"        # Время до перехода в Half-Open
+DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS: "2"   # Макс. запросов в Half-Open
+DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD: "2"      # Успешных запросов для возврата в Closed
 ```
 
 ## Мониторинг
@@ -38,6 +49,7 @@ CIRCUIT_BREAKER_SUCCESS_THRESHOLD: "2"      # Успешных запросов 
 1. **circuit_breaker_state**
    - Текущее состояние (0: Closed, 1: Open, 2: Half-Open)
    - Labels: name, pod_name, namespace
+   - name может быть "gotenberg" или "docx-generator"
 
 2. **circuit_breaker_failures_total**
    - Счетчик ошибок
@@ -57,20 +69,20 @@ CIRCUIT_BREAKER_SUCCESS_THRESHOLD: "2"      # Успешных запросов 
 
 ### Алерты
 
-1. **CircuitBreakerOpen**
-   - Срабатывает когда Circuit Breaker открыт > 5 минут
+1. **NasPdfServiceCircuitBreakerOpen**
+   - Срабатывает когда любой Circuit Breaker открыт > 5 минут
    - Severity: warning
 
-2. **HighCircuitBreakerFailureRate**
-   - Высокий уровень ошибок за 5 минут
+2. **NasPdfServiceHighCircuitBreakerFailureRate**
+   - Высокий уровень ошибок за 5 минут (>10%)
    - Severity: warning
 
-3. **CircuitBreakerUnhealthy**
+3. **NasPdfServiceCircuitBreakerUnhealthy**
    - Circuit Breaker в нездоровом состоянии
    - Severity: critical
 
-4. **CircuitBreakerSlowRecovery**
-   - Долгое время восстановления
+4. **NasPdfServiceCircuitBreakerSlowRecovery**
+   - Долгое время восстановления (>300 секунд)
    - Severity: warning
 
 ### Health Check
@@ -81,9 +93,15 @@ Endpoint `/health` возвращает:
   "status": "healthy|unhealthy",
   "timestamp": "2024-02-08T12:34:56Z",
   "details": {
-    "circuit_breaker": {
-      "status": "healthy|unhealthy",
-      "state": "Closed|Open|HalfOpen"
+    "circuit_breakers": {
+      "gotenberg": {
+        "status": "healthy|unhealthy",
+        "state": "Closed|Open|HalfOpen"
+      },
+      "docx_generator": {
+        "status": "healthy|unhealthy",
+        "state": "Closed|Open|HalfOpen"
+      }
     }
   }
 }
@@ -91,12 +109,28 @@ Endpoint `/health` возвращает:
 
 ## Использование в коде
 
+### Gotenberg Circuit Breaker
 ```go
 // Создание клиента с Circuit Breaker
 client := gotenberg.NewClientWithCircuitBreaker(gotenbergURL)
 
 // Использование
 pdfContent, err := client.ConvertDocxToPDF(docxPath)
+if err != nil {
+    if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
+        // Обработка случая, когда Circuit Breaker открыт
+    }
+    // Обработка других ошибок
+}
+```
+
+### DOCX Generator Circuit Breaker
+```go
+// Создание генератора с Circuit Breaker
+generator := docxgen.NewGenerator(scriptPath)
+
+// Использование
+err := generator.Generate(ctx, templatePath, dataPath, outputPath)
 if err != nil {
     if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
         // Обработка случая, когда Circuit Breaker открыт

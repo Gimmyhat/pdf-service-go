@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
 	"pdf-service-go/internal/pkg/circuitbreaker"
+	"pdf-service-go/internal/pkg/docxgen"
 	"pdf-service-go/internal/pkg/gotenberg"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/metrics"
@@ -19,15 +19,15 @@ import (
 
 type ServiceImpl struct {
 	gotenbergClient *gotenberg.ClientWithCircuitBreaker
+	docxGenerator   *docxgen.Generator
 }
 
 func NewService(gotenbergURL string) Service {
 	return &ServiceImpl{
 		gotenbergClient: gotenberg.NewClientWithCircuitBreaker(gotenbergURL),
+		docxGenerator:   docxgen.NewGenerator("scripts/generate_docx.py"),
 	}
 }
-
-// ... existing code ...
 
 func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byte, error) {
 	log := logger.Log.With(
@@ -82,21 +82,12 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 		return nil, fmt.Errorf("failed to write data file: %w", err)
 	}
 
-	// Запускаем Python-скрипт для генерации DOCX
-	log.Info("Starting DOCX generation with Python script")
-	scriptPath := "scripts/generate_docx.py"
-	cmd := exec.CommandContext(ctx, "python", scriptPath, templatePath, dataPath, docxPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		outputStr := string(output)
-		if len(outputStr) > 1000 {
-			outputStr = outputStr[:1000] + "... (truncated)"
-		}
-		log.Error("Failed to generate document",
-			zap.Error(err),
-			zap.String("output", outputStr),
-		)
+	// Генерируем DOCX с использованием нового генератора
+	log.Info("Starting DOCX generation")
+	if err := s.docxGenerator.Generate(ctx, templatePath, dataPath, docxPath); err != nil {
+		log.Error("Failed to generate DOCX", zap.Error(err))
 		metrics.PDFGenerationTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to generate document: %s: %w", outputStr, err)
+		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
 	}
 
 	// Начало запроса к Gotenberg
@@ -129,12 +120,22 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	return pdfContent, nil
 }
 
-// GetCircuitBreakerState возвращает текущее состояние Circuit Breaker
+// GetCircuitBreakerState возвращает текущее состояние Circuit Breaker для Gotenberg
 func (s *ServiceImpl) GetCircuitBreakerState() circuitbreaker.State {
 	return s.gotenbergClient.State()
 }
 
-// IsCircuitBreakerHealthy возвращает true, если Circuit Breaker в здоровом состоянии
+// IsCircuitBreakerHealthy возвращает true, если Circuit Breaker для Gotenberg в здоровом состоянии
 func (s *ServiceImpl) IsCircuitBreakerHealthy() bool {
 	return s.gotenbergClient.IsHealthy()
+}
+
+// GetDocxGeneratorState возвращает текущее состояние Circuit Breaker для генератора DOCX
+func (s *ServiceImpl) GetDocxGeneratorState() circuitbreaker.State {
+	return s.docxGenerator.State()
+}
+
+// IsDocxGeneratorHealthy возвращает true, если Circuit Breaker для генератора DOCX в здоровом состоянии
+func (s *ServiceImpl) IsDocxGeneratorHealthy() bool {
+	return s.docxGenerator.IsHealthy()
 }

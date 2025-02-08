@@ -129,11 +129,31 @@ func (s *Server) SetupRoutes() {
 	// API endpoints
 	v1 := s.Router.Group("/api/v1")
 	{
-		v1.POST("/docx", s.Handlers.PDF.GenerateDocx)
+		v1.POST("/docx", func(c *gin.Context) {
+			pdfContent, err := s.Handlers.PDF.GenerateDocx(c)
+			if err != nil {
+				logger.Error("Failed to generate PDF", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.Header("Content-Type", "application/pdf")
+			c.Header("Content-Disposition", "attachment; filename=result.pdf")
+			c.Data(http.StatusOK, "application/pdf", pdfContent)
+		})
 	}
 
 	// Поддержка старого endpoint'а для обратной совместимости
-	s.Router.POST("/generate-pdf", s.Handlers.PDF.GenerateDocx)
+	s.Router.POST("/generate-pdf", func(c *gin.Context) {
+		pdfContent, err := s.Handlers.PDF.GenerateDocx(c)
+		if err != nil {
+			logger.Error("Failed to generate PDF", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Disposition", "attachment; filename=result.pdf")
+		c.Data(http.StatusOK, "application/pdf", pdfContent)
+	})
 
 	logger.Info("Routes configured",
 		logger.Field("health_endpoint", "/health"),
@@ -201,43 +221,39 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.Router.ServeHTTP(w, r)
 }
 
-type HealthResponse struct {
-	Status    string `json:"status"`
-	Timestamp string `json:"timestamp"`
-	Details   struct {
-		CircuitBreaker struct {
-			Status string `json:"status"`
-			State  string `json:"state"`
-		} `json:"circuit_breaker"`
-	} `json:"details"`
-}
-
 func (s *Server) handleHealth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		response := HealthResponse{
-			Timestamp: time.Now().Format(time.RFC3339),
+		gotenbergState := s.service.GetCircuitBreakerState()
+		docxState := s.service.GetDocxGeneratorState()
+		isHealthy := s.service.IsCircuitBreakerHealthy() && s.service.IsDocxGeneratorHealthy()
+
+		status := "healthy"
+		if !isHealthy {
+			status = "unhealthy"
 		}
 
-		// Проверяем состояние Circuit Breaker
-		if pdfService, ok := s.service.(*pdf.ServiceImpl); ok {
-			cbState := pdfService.GetCircuitBreakerState()
-			cbHealth := pdfService.IsCircuitBreakerHealthy()
-
-			response.Details.CircuitBreaker.State = cbState.String()
-			if cbHealth {
-				response.Details.CircuitBreaker.Status = "healthy"
-			} else {
-				response.Details.CircuitBreaker.Status = "unhealthy"
-			}
+		response := gin.H{
+			"status":    status,
+			"timestamp": time.Now().Format(time.RFC3339),
+			"details": gin.H{
+				"circuit_breakers": gin.H{
+					"gotenberg": gin.H{
+						"status": s.service.IsCircuitBreakerHealthy(),
+						"state":  gotenbergState.String(),
+					},
+					"docx_generator": gin.H{
+						"status": s.service.IsDocxGeneratorHealthy(),
+						"state":  docxState.String(),
+					},
+				},
+			},
 		}
 
-		// Общий статус сервиса
-		if response.Details.CircuitBreaker.Status == "healthy" {
-			response.Status = "healthy"
-			c.JSON(http.StatusOK, response)
-		} else {
-			response.Status = "unhealthy"
+		if !isHealthy {
 			c.JSON(http.StatusServiceUnavailable, response)
+			return
 		}
+
+		c.JSON(http.StatusOK, response)
 	}
 }

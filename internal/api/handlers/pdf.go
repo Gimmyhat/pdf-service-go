@@ -3,12 +3,13 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"pdf-service-go/internal/domain/pdf"
-	"pdf-service-go/internal/metrics"
+	"pdf-service-go/internal/pkg/circuitbreaker"
+	"pdf-service-go/internal/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Определяем пользовательские ошибки
@@ -29,70 +30,14 @@ func NewPDFHandler(service pdf.Service) *PDFHandler {
 
 // ... existing code ...
 
-func (h *PDFHandler) GenerateDocx(c *gin.Context) {
-	// Проверяем размер тела запроса
-	if c.Request.ContentLength > 10<<20 { // 10 MB
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{
-			"error":    "request body too large",
-			"max_size": "10MB",
-		})
-		return
-	}
-
+func (h *PDFHandler) GenerateDocx(c *gin.Context) ([]byte, error) {
 	var req pdf.DocxRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   ErrInvalidRequest.Error(),
-			"details": err.Error(),
-		})
-		return
+		logger.Error("Failed to parse request", zap.Error(err))
+		return nil, err
 	}
 
-	// Проверяем обязательные поля
-	if err := h.validateRequest(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   ErrInvalidRequest.Error(),
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Используем контекст с таймаутом из middleware
-	pdfBytes, err := h.service.GenerateDocx(c.Request.Context(), &req)
-	if err != nil {
-		// Определяем тип ошибки и возвращаем соответствующий статус
-		status := h.determineErrorStatus(err)
-		c.JSON(status, gin.H{
-			"error":   ErrProcessingFailed.Error(),
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Записываем метрику размера файла
-	metrics.FileSize.WithLabelValues("pdf").Observe(float64(len(pdfBytes)))
-
-	filename := fmt.Sprintf("%s.pdf", req.ID)
-
-	// Проверяем размер сгенерированного файла
-	if len(pdfBytes) > 50<<20 { // 50 MB
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":    "generated file too large",
-			"max_size": "50MB",
-		})
-		return
-	}
-
-	// Устанавливаем правильные заголовки для скачивания PDF файла
-	c.Header("Content-Description", "File Transfer")
-	c.Header("Content-Transfer-Encoding", "binary")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Length", fmt.Sprint(len(pdfBytes)))
-	c.Header("Cache-Control", "private")
-	c.Header("Pragma", "public")
-
-	c.Data(http.StatusOK, "application/pdf", pdfBytes)
+	return h.service.GenerateDocx(c.Request.Context(), &req)
 }
 
 func (h *PDFHandler) validateRequest(req *pdf.DocxRequest) error {
@@ -120,4 +65,24 @@ func (h *PDFHandler) determineErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 	return http.StatusInternalServerError
+}
+
+// GetCircuitBreakerState возвращает текущее состояние Circuit Breaker для Gotenberg
+func (h *PDFHandler) GetCircuitBreakerState() circuitbreaker.State {
+	return h.service.GetCircuitBreakerState()
+}
+
+// IsCircuitBreakerHealthy возвращает true, если Circuit Breaker для Gotenberg в здоровом состоянии
+func (h *PDFHandler) IsCircuitBreakerHealthy() bool {
+	return h.service.IsCircuitBreakerHealthy()
+}
+
+// GetDocxGeneratorState возвращает текущее состояние Circuit Breaker для генератора DOCX
+func (h *PDFHandler) GetDocxGeneratorState() circuitbreaker.State {
+	return h.service.GetDocxGeneratorState()
+}
+
+// IsDocxGeneratorHealthy возвращает true, если Circuit Breaker для генератора DOCX в здоровом состоянии
+func (h *PDFHandler) IsDocxGeneratorHealthy() bool {
+	return h.service.IsDocxGeneratorHealthy()
 }
