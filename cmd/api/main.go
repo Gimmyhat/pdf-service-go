@@ -36,7 +36,7 @@ func main() {
 	logger.Info("Handlers initialized")
 
 	// Создаем и настраиваем сервер
-	server := api.NewServer(handlers)
+	server := api.NewServer(handlers, pdfService)
 	server.SetupRoutes()
 	logger.Info("Server configured and routes set up")
 

@@ -1,50 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pdf-service-config
+data:
+  GOTENBERG_URL: "http://gotenberg:3000"
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+  CIRCUIT_BREAKER_RESET_TIMEOUT: "10s"
+  CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS: "2"
+  CIRCUIT_BREAKER_SUCCESS_THRESHOLD: "2"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nas-gotenberg
-  namespace: print-serv
+  name: pdf-service
+  labels:
+    app: pdf-service
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
-      app: nas-gotenberg
+      app: pdf-service
   template:
     metadata:
       labels:
-        app: nas-gotenberg
+        app: pdf-service
     spec:
       containers:
-      - name: nas-gotenberg
-        image: gotenberg/gotenberg:7.10
+      - name: pdf-service
+        image: pdf-service:latest
         ports:
-        - containerPort: 3000
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        args:
-        - "gotenberg"
-        - "--api-port=3000"
-        - "--chromium-disable-javascript=true"
-        - "--chromium-allow-list=file:///tmp/.*"
-        - "--uno-listener-restart-threshold=0"
-        - "--prometheus-metrics=true"
-        - "--prometheus-metrics-path=/metrics"
+        - containerPort: 8080
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: pdf-service-config
         readinessProbe:
           httpGet:
             path: /health
-            port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 5
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
         livenessProbe:
           httpGet:
             path: /health
-            port: 3000
+            port: 8080
           initialDelaySeconds: 15
-          periodSeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
 ---
 apiVersion: v1
 kind: Service

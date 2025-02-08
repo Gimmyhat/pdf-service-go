@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/gotenberg"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/metrics"
@@ -17,12 +18,12 @@ import (
 )
 
 type ServiceImpl struct {
-	gotenbergClient *gotenberg.Client
+	gotenbergClient *gotenberg.ClientWithCircuitBreaker
 }
 
 func NewService(gotenbergURL string) Service {
 	return &ServiceImpl{
-		gotenbergClient: gotenberg.NewClient(gotenbergURL),
+		gotenbergClient: gotenberg.NewClientWithCircuitBreaker(gotenbergURL),
 	}
 }
 
@@ -126,4 +127,14 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	metrics.PDFFileSizeBytes.WithLabelValues(req.ID).Observe(float64(len(pdfContent)))
 
 	return pdfContent, nil
+}
+
+// GetCircuitBreakerState возвращает текущее состояние Circuit Breaker
+func (s *ServiceImpl) GetCircuitBreakerState() circuitbreaker.State {
+	return s.gotenbergClient.State()
+}
+
+// IsCircuitBreakerHealthy возвращает true, если Circuit Breaker в здоровом состоянии
+func (s *ServiceImpl) IsCircuitBreakerHealthy() bool {
+	return s.gotenbergClient.IsHealthy()
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"pdf-service-go/internal/api/middleware"
+	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -21,9 +22,11 @@ type Server struct {
 	Router   *gin.Engine
 	Handlers *Handlers
 	server   *http.Server
+	mux      *http.ServeMux
+	service  pdf.Service
 }
 
-func NewServer(handlers *Handlers) *Server {
+func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	// Отключаем стандартный логгер gin
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -86,14 +89,14 @@ func NewServer(handlers *Handlers) *Server {
 	return &Server{
 		Router:   router,
 		Handlers: handlers,
+		mux:      http.NewServeMux(),
+		service:  service,
 	}
 }
 
 func (s *Server) SetupRoutes() {
 	// Health check для k8s
-	s.Router.GET("/health", func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+	s.Router.GET("/health", s.handleHealth())
 
 	// Метрики Prometheus
 	s.Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -170,4 +173,45 @@ func (s *Server) Stop() error {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.Router.ServeHTTP(w, r)
+}
+
+type HealthResponse struct {
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
+	Details   struct {
+		CircuitBreaker struct {
+			Status string `json:"status"`
+			State  string `json:"state"`
+		} `json:"circuit_breaker"`
+	} `json:"details"`
+}
+
+func (s *Server) handleHealth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		response := HealthResponse{
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		// Проверяем состояние Circuit Breaker
+		if pdfService, ok := s.service.(*pdf.ServiceImpl); ok {
+			cbState := pdfService.GetCircuitBreakerState()
+			cbHealth := pdfService.IsCircuitBreakerHealthy()
+
+			response.Details.CircuitBreaker.State = cbState.String()
+			if cbHealth {
+				response.Details.CircuitBreaker.Status = "healthy"
+			} else {
+				response.Details.CircuitBreaker.Status = "unhealthy"
+			}
+		}
+
+		// Общий статус сервиса
+		if response.Details.CircuitBreaker.Status == "healthy" {
+			response.Status = "healthy"
+			c.JSON(http.StatusOK, response)
+		} else {
+			response.Status = "unhealthy"
+			c.JSON(http.StatusServiceUnavailable, response)
+		}
+	}
 }
