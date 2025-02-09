@@ -10,3 +10,55 @@ spec:
   - port: 3000
     targetPort: 3000
   type: ClusterIP 
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-gotenberg
+  namespace: print-serv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nas-gotenberg
+  template:
+    metadata:
+      labels:
+        app: nas-gotenberg
+    spec:
+      containers:
+      - name: nas-gotenberg
+        image: gotenberg/gotenberg:7.10
+        args:
+        - gotenberg
+        - --api-port=3000
+        - --chromium-disable-javascript=true
+        - --chromium-allow-list=file:///tmp/.*
+        - --uno-listener-restart-threshold=0
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1 

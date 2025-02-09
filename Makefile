@@ -65,6 +65,8 @@ deploy-monitoring: deploy-prometheus deploy-grafana deploy-jaeger
 deploy-test: check-image
 	@echo "Deploying version $(VERSION) to test cluster ($(TEST_CONTEXT))..."
 	kubectl config use-context $(TEST_CONTEXT)
+	@echo "Updating template..."
+	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment test -Force
 	@echo "Deploying monitoring services..."
 	kubectl apply -f k8s/prometheus-deployment.yaml
 	kubectl apply -f k8s/grafana-deployment.yaml
@@ -77,18 +79,18 @@ deploy-test: check-image
 	kubectl rollout status deployment/nas-jaeger -n print-serv
 	@echo "Deploying application services..."
 	kubectl apply -f k8s/configmap.yaml
-	kubectl apply -f k8s/templates-configmap-filled.yaml
 	kubectl apply -f k8s/gotenberg-deployment.yaml
 	kubectl rollout status deployment/nas-gotenberg -n print-serv
 	powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -"
 	kubectl apply -f k8s/hpa.yaml
-	kubectl rollout restart deployment/nas-pdf-service -n print-serv
 	kubectl rollout status deployment/nas-pdf-service -n print-serv
 	@echo "Deployment to test cluster completed successfully"
 
 deploy-prod: check-image
 	@echo "Deploying version $(VERSION) to production cluster ($(PROD_CONTEXT))..."
 	kubectl config use-context $(PROD_CONTEXT)
+	@echo "Updating template..."
+	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment prod
 	@echo "Deploying monitoring services..."
 	kubectl apply -f k8s/prometheus-deployment.yaml
 	kubectl apply -f k8s/grafana-deployment.yaml
@@ -101,32 +103,22 @@ deploy-prod: check-image
 	kubectl rollout status deployment/nas-jaeger -n print-serv
 	@echo "Deploying application services..."
 	kubectl apply -f k8s/configmap.yaml
-	kubectl apply -f k8s/templates-configmap-filled.yaml
 	kubectl apply -f k8s/gotenberg-deployment.yaml
 	kubectl rollout status deployment/nas-gotenberg -n print-serv
 	powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -"
 	kubectl apply -f k8s/hpa.yaml
-	kubectl rollout restart deployment/nas-pdf-service -n print-serv
 	kubectl rollout status deployment/nas-pdf-service -n print-serv
 	@echo "Deployment to production cluster completed successfully"
 
 deploy-all: deploy-test deploy-prod
 
-update-template:
-	@echo "Updating template ConfigMap..."
-	powershell -ExecutionPolicy Bypass -Command "$$base64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes('internal/domain/pdf/templates/template.docx')); $$yaml = 'apiVersion: v1', 'kind: ConfigMap', 'metadata:', '  name: nas-pdf-service-templates', '  namespace: print-serv', 'binaryData:', '  template.docx: ' + $$base64; Set-Content -Path k8s/templates-configmap-filled.yaml -Value $$yaml"
-
-update-template-test: update-template
+update-template-test:
 	@echo "Updating template in test cluster..."
-	set "KUBECONFIG=$(TEST_KUBECONFIG)" && \
-	kubectl apply -f k8s/templates-configmap-filled.yaml && \
-	kubectl rollout restart deployment/nas-pdf-service -n print-serv
+	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment test
 
-update-template-prod: update-template
+update-template-prod:
 	@echo "Updating template in production cluster..."
-	set "KUBECONFIG=$(PROD_KUBECONFIG)" && \
-	kubectl apply -f k8s/templates-configmap-filled.yaml && \
-	kubectl rollout restart deployment/nas-pdf-service -n print-serv
+	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment prod
 
 check-test:
 	@echo "Checking test cluster ($(TEST_CONTEXT)) status..."
