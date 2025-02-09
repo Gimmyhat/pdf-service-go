@@ -55,4 +55,10 @@ wheels/
 .installed.cfg
 *.egg
 venv/
-scripts/venv/ 
+scripts/venv/
+
+# Generated files
+current_version.txt
+k8s/templates-configmap-filled.yaml
+k8s/grafana-dashboards.yaml
+backups/ 
