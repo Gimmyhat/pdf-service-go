@@ -14,6 +14,7 @@ import (
 	"pdf-service-go/internal/pkg/cache"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/retry"
 	"pdf-service-go/internal/pkg/tracing"
 
 	"bytes"
@@ -72,6 +73,11 @@ type Config struct {
 	PodName          string
 	Namespace        string
 	CacheTTL         time.Duration
+	// Retry конфигурация
+	RetryMaxAttempts   int
+	RetryInitialDelay  time.Duration
+	RetryMaxDelay      time.Duration
+	RetryBackoffFactor float64
 }
 
 // Generator представляет генератор DOCX файлов с Circuit Breaker
@@ -81,6 +87,7 @@ type Generator struct {
 	cache        *cache.Cache
 	tempManager  *TempManager
 	gotenbergURL string
+	retrier      *retry.Retrier
 }
 
 // getEnvWithDefault возвращает значение переменной окружения или значение по умолчанию
@@ -122,6 +129,11 @@ func NewGenerator(scriptPath string) *Generator {
 		PodName:          os.Getenv("POD_NAME"),
 		Namespace:        os.Getenv("POD_NAMESPACE"),
 		CacheTTL:         getEnvDurationWithDefault("DOCX_TEMPLATE_CACHE_TTL", 5*time.Minute),
+		// Retry конфигурация
+		RetryMaxAttempts:   getEnvIntWithDefault("DOCX_RETRY_MAX_ATTEMPTS", 3),
+		RetryInitialDelay:  getEnvDurationWithDefault("DOCX_RETRY_INITIAL_DELAY", 100*time.Millisecond),
+		RetryMaxDelay:      getEnvDurationWithDefault("DOCX_RETRY_MAX_DELAY", 2*time.Second),
+		RetryBackoffFactor: float64(getEnvIntWithDefault("DOCX_RETRY_BACKOFF_FACTOR", 2)),
 	}
 
 	tempManager, err := NewTempManager(
@@ -142,12 +154,23 @@ func NewGenerator(scriptPath string) *Generator {
 		Namespace:        config.Namespace,
 	})
 
+	// Создаем retrier с конфигурацией
+	retrier := retry.New(
+		"docx-generator",
+		logger.Log,
+		retry.WithMaxAttempts(config.RetryMaxAttempts),
+		retry.WithInitialDelay(config.RetryInitialDelay),
+		retry.WithMaxDelay(config.RetryMaxDelay),
+		retry.WithBackoffFactor(config.RetryBackoffFactor),
+	)
+
 	return &Generator{
 		config:       config,
 		cb:           cb,
 		cache:        cache.NewCache(config.CacheTTL),
 		tempManager:  tempManager,
 		gotenbergURL: getEnvWithDefault("GOTENBERG_URL", "http://nas-gotenberg:3000"),
+		retrier:      retrier,
 	}
 }
 
@@ -210,40 +233,43 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	outputDocx := filepath.Join(tempDir, fmt.Sprintf("output_%s.docx",
 		hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))))
 
-	err = g.cb.Execute(ctx, func() error {
-		cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, templatePath, dataPath, outputDocx)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			logger.Error("Failed to generate DOCX",
-				zap.Error(err),
-				zap.String("output", string(output)),
-				zap.String("template", templatePath),
-				zap.String("data", dataPath),
-				zap.String("output_docx", outputDocx),
-			)
-			docxGenerationErrors.WithLabelValues("python_error").Inc()
-			return err
-		}
+	// Оборачиваем выполнение Python-скрипта в retry механизм
+	err = g.retrier.Do(ctx, func(ctx context.Context) error {
+		return g.cb.Execute(ctx, func() error {
+			cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, templatePath, dataPath, outputDocx)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				logger.Error("Failed to generate DOCX",
+					zap.Error(err),
+					zap.String("output", string(output)),
+					zap.String("template", templatePath),
+					zap.String("data", dataPath),
+					zap.String("output_docx", outputDocx),
+				)
+				docxGenerationErrors.WithLabelValues("python_error").Inc()
+				return err
+			}
 
-		// Копируем сгенерированный файл в целевую директорию
-		outputData, err := os.ReadFile(outputDocx)
-		if err != nil {
-			logger.Error("Failed to read generated DOCX",
-				zap.Error(err),
-				zap.String("path", outputDocx),
-			)
-			return err
-		}
+			// Копируем сгенерированный файл в целевую директорию
+			outputData, err := os.ReadFile(outputDocx)
+			if err != nil {
+				logger.Error("Failed to read generated DOCX",
+					zap.Error(err),
+					zap.String("path", outputDocx),
+				)
+				return err
+			}
 
-		if err = os.WriteFile(outputPath, outputData, 0644); err != nil {
-			logger.Error("Failed to write output file",
-				zap.Error(err),
-				zap.String("path", outputPath),
-			)
-			return err
-		}
+			if err = os.WriteFile(outputPath, outputData, 0644); err != nil {
+				logger.Error("Failed to write output file",
+					zap.Error(err),
+					zap.String("path", outputPath),
+				)
+				return err
+			}
 
-		return nil
+			return nil
+		})
 	})
 
 	duration := time.Since(start).Seconds()
