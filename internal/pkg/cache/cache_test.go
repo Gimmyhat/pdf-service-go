@@ -3,8 +3,8 @@ package cache
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
