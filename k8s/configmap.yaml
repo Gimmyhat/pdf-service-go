@@ -9,9 +9,9 @@ data:
   LOG_LEVEL: "debug"
   
   # Основные настройки трейсинга
-  OTEL_EXPORTER_OTLP_ENDPOINT: "nas-jaeger:4317"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://nas-jaeger:4317"
   OTEL_SERVICE_NAME: "nas-pdf-service"
-  OTEL_SERVICE_VERSION: "${VERSION}"
+  OTEL_SERVICE_VERSION: "25.02.09.1106"
   OTEL_ENVIRONMENT: "development"
   
   # Настройки протокола
