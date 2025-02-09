@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -165,4 +166,15 @@ func isSensitiveHeader(header string) bool {
 		"token":           true,
 	}
 	return sensitiveHeaders[header]
+}
+
+// GinTracingMiddleware адаптер для использования трейсинга с Gin
+func GinTracingMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		handler := TracingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c.Request = r
+			c.Next()
+		}))
+		handler.ServeHTTP(c.Writer, c.Request)
+	}
 }
