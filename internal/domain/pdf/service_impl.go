@@ -2,8 +2,10 @@ package pdf
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -44,22 +46,29 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 		)
 	}()
 
-	// Увеличиваем счетчик начала генерации
-	metrics.PDFGenerationTotal.WithLabelValues("started").Inc()
+	// Увеличиваем счетчик общего количества запросов
+	metrics.RequestsTotal.WithLabelValues("total").Inc()
 	log.Info("Starting PDF generation")
 
 	// Проверяем наличие шаблона
 	templatePath := filepath.Join("internal/domain/pdf/templates", "template.docx")
 	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
 		log.Error("Template file not found", zap.String("path", templatePath))
-		metrics.PDFGenerationTotal.WithLabelValues("error").Inc()
+		metrics.RequestsTotal.WithLabelValues("failed").Inc()
 		return nil, ErrTemplateNotFound
 	}
 
 	// Создаем временные файлы
 	tempDir := os.TempDir()
-	dataPath := filepath.Join(tempDir, fmt.Sprintf("%s.json", req.ID))
-	docxPath := filepath.Join(tempDir, fmt.Sprintf("%s.docx", req.ID))
+	randomID := make([]byte, 8)
+	if _, err := rand.Read(randomID); err != nil {
+		log.Error("Failed to generate random ID", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		return nil, fmt.Errorf("failed to generate random ID: %w", err)
+	}
+	uniqueSuffix := hex.EncodeToString(randomID)
+	dataPath := filepath.Join(tempDir, fmt.Sprintf("%s_%s.json", req.ID, uniqueSuffix))
+	docxPath := filepath.Join(tempDir, fmt.Sprintf("%s_%s.docx", req.ID, uniqueSuffix))
 	defer os.Remove(dataPath)
 	defer os.Remove(docxPath)
 
@@ -72,33 +81,31 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	data, err := json.Marshal(req)
 	if err != nil {
 		log.Error("Failed to marshal request data", zap.Error(err))
-		metrics.PDFGenerationTotal.WithLabelValues("error").Inc()
+		metrics.RequestsTotal.WithLabelValues("failed").Inc()
 		return nil, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 	err = os.WriteFile(dataPath, data, 0644)
 	if err != nil {
 		log.Error("Failed to write data file", zap.Error(err))
-		metrics.PDFGenerationTotal.WithLabelValues("error").Inc()
+		metrics.RequestsTotal.WithLabelValues("failed").Inc()
 		return nil, fmt.Errorf("failed to write data file: %w", err)
 	}
 
-	// Генерируем DOCX с использованием нового генератора
+	// Генерируем DOCX
 	log.Info("Starting DOCX generation")
 	if err := s.docxGenerator.Generate(ctx, templatePath, dataPath, docxPath); err != nil {
 		log.Error("Failed to generate DOCX", zap.Error(err))
-		metrics.PDFGenerationTotal.WithLabelValues("error").Inc()
+		metrics.RequestsTotal.WithLabelValues("failed").Inc()
 		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
 	}
 
-	// Начало запроса к Gotenberg
+	// Конвертируем DOCX в PDF через Gotenberg
 	log.Info("Starting PDF conversion with Gotenberg")
 	gotenbergStart := time.Now()
-
-	// Конвертируем DOCX в PDF через Gotenberg
 	pdfContent, err := s.gotenbergClient.ConvertDocxToPDF(docxPath)
 	if err != nil {
 		log.Error("Failed to convert to PDF", zap.Error(err))
-		metrics.PDFGenerationTotal.WithLabelValues("error").Inc()
+		metrics.RequestsTotal.WithLabelValues("failed").Inc()
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to convert to PDF: %w", err)
 	}
@@ -114,7 +121,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	)
 
 	// Успешное завершение
-	metrics.PDFGenerationTotal.WithLabelValues("success").Inc()
+	metrics.RequestsTotal.WithLabelValues("completed").Inc()
 	metrics.PDFFileSizeBytes.WithLabelValues(req.ID).Observe(float64(len(pdfContent)))
 
 	return pdfContent, nil

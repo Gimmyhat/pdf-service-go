@@ -11,6 +11,30 @@ PROD_KUBECONFIG = $(HOME)/.kube/config_prod
 TEST_CONTEXT = efgi-irk-test
 PROD_CONTEXT = efgi-irk-prod
 
+# Переменные окружения
+ENV ?= test
+CONTEXT = $(if $(filter prod,$(ENV)),$(PROD_CONTEXT),$(TEST_CONTEXT))
+
+# Функция для повторных попытков kubectl команд
+define retry_kubectl
+	@for i in 1 2 3; do \
+		$(1) && break || \
+		if [ $$i -lt 3 ]; then \
+			echo "Command failed, retrying in 5 seconds... (Attempt $$i of 3)"; \
+			sleep 5; \
+		else \
+			exit 1; \
+		fi; \
+	done
+endef
+
+# Проверка подключения к кластеру
+check-cluster-connection:
+	@echo "Checking cluster connection..."
+	@kubectl cluster-info > /dev/null || (echo "Error: Cannot connect to cluster" && exit 1)
+	@kubectl get namespace print-serv > /dev/null || (echo "Error: Cannot access print-serv namespace" && exit 1)
+	@echo "Cluster connection OK"
+
 build:
 	@echo "Building and pushing Docker image with version: $(VERSION)..."
 	docker build -t $(IMAGE_NAME):$(VERSION) .
@@ -62,55 +86,56 @@ deploy-jaeger:
 deploy-monitoring: deploy-prometheus deploy-grafana deploy-jaeger
 	@echo "All monitoring services deployed"
 
-deploy-test: check-image
-	@echo "Deploying version $(VERSION) to test cluster ($(TEST_CONTEXT))..."
-	kubectl config use-context $(TEST_CONTEXT)
-	@echo "Updating template..."
-	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment test -Force
-	@echo "Deploying monitoring services..."
-	kubectl apply -f k8s/prometheus-deployment.yaml
-	kubectl apply -f k8s/grafana-deployment.yaml
-	kubectl apply -f k8s/grafana-datasources.yaml
-	kubectl apply -f k8s/grafana-dashboards.yaml
-	kubectl apply -f k8s/jaeger-deployment.yaml
-	@echo "Waiting for monitoring services..."
-	kubectl rollout status deployment/nas-prometheus -n print-serv
-	kubectl rollout status deployment/nas-grafana -n print-serv
-	kubectl rollout status deployment/nas-jaeger -n print-serv
-	@echo "Deploying application services..."
-	kubectl apply -f k8s/configmap.yaml
-	kubectl apply -f k8s/gotenberg-deployment.yaml
-	kubectl rollout status deployment/nas-gotenberg -n print-serv
-	powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -"
-	kubectl apply -f k8s/hpa.yaml
-	kubectl rollout status deployment/nas-pdf-service -n print-serv
-	@echo "Deployment to test cluster completed successfully"
+# Проверка корректности ENV
+check-env:
+	@if ! [ "$(ENV)" = "test" ] && ! [ "$(ENV)" = "prod" ]; then \
+		echo "Error: ENV must be either 'test' or 'prod'"; \
+		exit 1; \
+	fi
 
-deploy-prod: check-image
-	@echo "Deploying version $(VERSION) to production cluster ($(PROD_CONTEXT))..."
-	kubectl config use-context $(PROD_CONTEXT)
-	@echo "Updating template..."
-	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment prod
+# Универсальная команда деплоя
+deploy: check-image check-cluster-connection check-env
+	@echo "Deploying version $(VERSION) to $(ENV) cluster ($(CONTEXT))..."
+	$(call retry_kubectl,kubectl config use-context $(CONTEXT))
 	@echo "Deploying monitoring services..."
-	kubectl apply -f k8s/prometheus-deployment.yaml
-	kubectl apply -f k8s/grafana-deployment.yaml
-	kubectl apply -f k8s/grafana-datasources.yaml
-	kubectl apply -f k8s/grafana-dashboards.yaml
-	kubectl apply -f k8s/jaeger-deployment.yaml
+	$(call retry_kubectl,kubectl apply -f k8s/prometheus-deployment.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/grafana-deployment.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/grafana-datasources.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/grafana-dashboards.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/jaeger-deployment.yaml)
 	@echo "Waiting for monitoring services..."
-	kubectl rollout status deployment/nas-prometheus -n print-serv
-	kubectl rollout status deployment/nas-grafana -n print-serv
-	kubectl rollout status deployment/nas-jaeger -n print-serv
+	$(call retry_kubectl,kubectl rollout status deployment/nas-prometheus -n print-serv)
+	$(call retry_kubectl,kubectl rollout status deployment/nas-grafana -n print-serv)
+	$(call retry_kubectl,kubectl rollout status deployment/nas-jaeger -n print-serv)
 	@echo "Deploying application services..."
-	kubectl apply -f k8s/configmap.yaml
-	kubectl apply -f k8s/gotenberg-deployment.yaml
-	kubectl rollout status deployment/nas-gotenberg -n print-serv
-	powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)' | kubectl apply -f -"
-	kubectl apply -f k8s/hpa.yaml
-	kubectl rollout status deployment/nas-pdf-service -n print-serv
-	@echo "Deployment to production cluster completed successfully"
+	$(call retry_kubectl,kubectl apply -f k8s/configmap.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/gotenberg-deployment.yaml)
+	$(call retry_kubectl,kubectl rollout status deployment/nas-gotenberg -n print-serv)
+	@echo "Updating template and deploying PDF service..."
+	powershell -ExecutionPolicy Bypass -File scripts/update-template-unified.ps1 -Environment $(ENV) -Force -SkipRestart
+	@powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)'" | kubectl apply -f -
+	$(call retry_kubectl,kubectl apply -f k8s/hpa.yaml)
+	$(call retry_kubectl,kubectl rollout status deployment/nas-pdf-service -n print-serv)
+	@echo "Deployment to $(ENV) cluster completed successfully"
 
-deploy-all: deploy-test deploy-prod
+# Алиасы для обратной совместимости
+deploy-test: 
+	@$(MAKE) deploy ENV=test
+
+deploy-prod: 
+	@$(MAKE) deploy ENV=prod
+
+deploy-all: check-image
+	@echo "Starting deployment of version $(VERSION) to all clusters..."
+	@$(MAKE) deploy ENV=test
+	@echo "\nTest deployment completed. Checking test cluster status..."
+	@kubectl config use-context $(TEST_CONTEXT)
+	@kubectl get pods -n print-serv -l app=nas-pdf-service
+	@echo "\nWaiting for confirmation before production deployment..."
+	@powershell -Command "$$confirmation = Read-Host 'Do you want to proceed with production deployment? (y/N)'; if ($$confirmation -ne 'y') { exit 1 }"
+	@echo "\nProceeding with production deployment..."
+	@$(MAKE) deploy ENV=prod
+	@echo "\nDeployment to all clusters completed successfully!"
 
 update-template-test:
 	@echo "Updating template in test cluster..."
@@ -167,9 +192,10 @@ help:
 	@echo "  build-new          - Build and push Docker image (always generate new version)"
 	@echo "  build-local        - Build Docker image for local development"
 	@echo "  get-version        - Show current version"
-	@echo "  deploy-test        - Deploy to test cluster (includes Grafana)"
-	@echo "  deploy-prod        - Deploy to production cluster"
-	@echo "  deploy-all         - Deploy to both clusters"
+	@echo "  deploy             - Deploy to specified cluster (use ENV=test or ENV=prod)"
+	@echo "  deploy-test        - Deploy to test cluster (alias for deploy ENV=test)"
+	@echo "  deploy-prod        - Deploy to production cluster (alias for deploy ENV=prod)"
+	@echo "  deploy-all         - Deploy to both clusters sequentially"
 	@echo "  deploy-grafana     - Deploy Grafana separately"
 	@echo "  deploy-prometheus  - Deploy Prometheus separately"
 	@echo "  deploy-monitoring  - Deploy both Grafana and Prometheus"
@@ -189,8 +215,8 @@ help:
 	@echo "  make build                    # Build with existing or auto-generated version"
 	@echo "  make build-new               # Build with new auto-generated version"
 	@echo "  make build VERSION=1.2.3     # Build with specific version"
-	@echo "  make get-version            # Show current version"
-	@echo "  make deploy-test             # Deploy latest build to test"
+	@echo "  make deploy ENV=test         # Deploy to test cluster"
+	@echo "  make deploy ENV=prod         # Deploy to production cluster"
 	@echo "  make deploy-all VERSION=1.2.3 # Deploy specific version to all clusters"
 	@echo "  make port-forward-grafana    # Access Grafana UI at http://localhost:3000"
 	@echo "  make port-forward-prometheus # Access Prometheus UI at http://localhost:9090" 

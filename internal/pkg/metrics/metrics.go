@@ -6,6 +6,15 @@ import (
 )
 
 var (
+	// RequestsTotal точное количество запросов на генерацию PDF
+	RequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pdf_requests_total",
+			Help: "Total number of PDF generation requests",
+		},
+		[]string{"status"},
+	)
+
 	// HTTPRequestsTotal количество HTTP запросов
 	HTTPRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -23,15 +32,6 @@ var (
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"method", "path"},
-	)
-
-	// PDFGenerationTotal количество сгенерированных PDF
-	PDFGenerationTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "pdf_generation_total",
-			Help: "Total number of PDF generations",
-		},
-		[]string{"status"},
 	)
 
 	// PDFGenerationDuration длительность генерации PDF

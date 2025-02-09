@@ -8,7 +8,10 @@ param(
     [switch]$Force,
     
     [Parameter(Mandatory=$false)]
-    [switch]$SkipBackup
+    [switch]$SkipBackup,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$SkipRestart
 )
 
 # Set UTF8 encoding
@@ -41,12 +44,12 @@ function Test-KubeConnection {
         [string]$Context
     )
     try {
-        $result = kubectl config get-contexts $Context 2>&1
+        kubectl config get-contexts $Context 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Context '$Context' not found in kubeconfig"
         }
         
-        $result = kubectl get namespace print-serv 2>&1
+        kubectl get namespace print-serv 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Namespace 'print-serv' not found or no access"
         }
@@ -154,19 +157,23 @@ binaryData:
     kubectl apply -f $outputPath
 
     # Restart pods with confirmation in production
-    if ($Environment -eq 'prod' -and -not $Force) {
-        $confirmation = Read-Host "Template has been updated. Do you want to restart the pods now? (y/N)"
-        if ($confirmation -ne 'y') {
-            Write-Host "Template updated but pods were not restarted. Run 'kubectl rollout restart deployment/nas-pdf-service -n print-serv' manually when ready."
-            exit 0
+    if (-not $SkipRestart) {
+        if ($Environment -eq 'prod' -and -not $Force) {
+            $confirmation = Read-Host "Template has been updated. Do you want to restart the pods now? (y/N)"
+            if ($confirmation -ne 'y') {
+                Write-Host "Template updated but pods were not restarted. Run 'kubectl rollout restart deployment/nas-pdf-service -n print-serv' manually when ready."
+                exit 0
+            }
         }
+
+        Write-Host "Restarting pods in $envDisplay..."
+        kubectl rollout restart deployment/nas-pdf-service -n print-serv
+
+        Write-Host "Waiting for pods to be ready..."
+        kubectl rollout status deployment/nas-pdf-service -n print-serv
+    } else {
+        Write-Host "Skipping pod restart as requested"
     }
-
-    Write-Host "Restarting pods in $envDisplay..."
-    kubectl rollout restart deployment/nas-pdf-service -n print-serv
-
-    Write-Host "Waiting for pods to be ready..."
-    kubectl rollout status deployment/nas-pdf-service -n print-serv
 
     Write-Host "Template update in $envDisplay completed successfully!"
     
