@@ -53,6 +53,14 @@ spec:
           value: "production"
         - name: OTEL_TRACES_SAMPLER
           value: "always_on"
+        - name: DOCX_RETRY_MAX_ATTEMPTS
+          value: "3"
+        - name: DOCX_RETRY_INITIAL_DELAY
+          value: "1s"
+        - name: DOCX_RETRY_MAX_DELAY
+          value: "10s"
+        - name: DOCX_RETRY_BACKOFF_FACTOR
+          value: "3"
         envFrom:
         - configMapRef:
             name: nas-pdf-service-config

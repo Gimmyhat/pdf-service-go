@@ -20,9 +20,9 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		MaxAttempts:   3,
-		InitialDelay:  100 * time.Millisecond,
-		MaxDelay:      2 * time.Second,
-		BackoffFactor: 2.0,
+		InitialDelay:  1 * time.Second,
+		MaxDelay:      10 * time.Second,
+		BackoffFactor: 3.0,
 	}
 }
 

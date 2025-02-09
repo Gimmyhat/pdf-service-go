@@ -360,13 +360,14 @@ func (g *Generator) GeneratePDF(ctx context.Context, templateName string, data i
 }
 
 // fillTemplate заполняет шаблон данными
-func (g *Generator) fillTemplate(template io.Reader, data interface{}, output io.Writer) error {
+func (g *Generator) fillTemplate(template io.Reader, _ interface{}, output io.Writer) error {
 	// Временная реализация
-	return fmt.Errorf("not implemented")
+	_, err := io.Copy(output, template)
+	return err
 }
 
 // convertToPDF конвертирует DOCX файл в PDF
-func (g *Generator) convertToPDF(ctx context.Context, docxPath string) ([]byte, error) {
+func (g *Generator) convertToPDF(_ context.Context, _ string) ([]byte, error) {
 	// Временная реализация
 	return nil, fmt.Errorf("not implemented")
 }
