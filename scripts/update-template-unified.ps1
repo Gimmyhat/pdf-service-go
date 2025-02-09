@@ -175,6 +175,6 @@ binaryData:
     kubectl get pods -n print-serv -l app=nas-pdf-service
 }
 catch {
-    Write-Error "Error updating template in ${envDisplay}: ${_}"
+    Write-Error "Error updating template in $envDisplay`: $($_.Exception.Message)"
     exit 1
 } 

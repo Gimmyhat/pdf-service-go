@@ -1117,4 +1117,197 @@ data:
           ]
         }
       ]
+    }
+
+  business-metrics.json: |-
+    {
+      "title": "PDF Service Business Metrics",
+      "uid": "pdf-business-metrics",
+      "tags": ["business", "pdf-service"],
+      "timezone": "browser",
+      "refresh": "10s",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "pod",
+            "type": "query",
+            "datasource": "Prometheus",
+            "query": "label_values(pdf_generation_total, pod)",
+            "refresh": 2,
+            "includeAll": true
+          },
+          {
+            "name": "status",
+            "type": "custom",
+            "query": "success,error",
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$__all"
+            },
+            "includeAll": true
+          }
+        ]
+      },
+      "panels": [
+        {
+          "title": "PDF Generation Success Rate",
+          "type": "gauge",
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+          "options": {
+            "reduceOptions": {
+              "values": false,
+              "calcs": ["lastNotNull"],
+              "fields": ""
+            },
+            "orientation": "auto",
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 90 },
+                { "color": "green", "value": 95 }
+              ]
+            }
+          },
+          "targets": [
+            {
+              "expr": "(sum(increase(pdf_generation_total{status=\"success\"}[5m])) / sum(increase(pdf_generation_total[5m]))) * 100",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent"
+            }
+          }
+        },
+        {
+          "title": "PDF Generation Throughput",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 18, "x": 6, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(pdf_generation_total{status=~\"$status\", pod=~\"$pod\"}[5m])) by (status)",
+              "legendFormat": "{{status}}"
+            }
+          ],
+          "options": {
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "title": "Average File Size by Template",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "avg(pdf_file_size_bytes) by (template)",
+              "legendFormat": "{{template}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "title": "Processing Time Distribution",
+          "type": "heatmap",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "options": {
+            "calculate": true,
+            "calculation": {
+              "xBuckets": {
+                "mode": "size",
+                "value": "1m"
+              }
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(increase(pdf_generation_duration_seconds_bucket[1m])) by (le)",
+              "format": "heatmap",
+              "legendFormat": "{{le}}"
+            }
+          ]
+        },
+        {
+          "title": "Top 5 Slowest Templates",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "options": {
+            "showHeader": true,
+            "sortBy": [
+              {
+                "displayName": "Average Duration",
+                "desc": true
+              }
+            ]
+          },
+          "targets": [
+            {
+              "expr": "topk(5, avg(pdf_generation_duration_seconds) by (template))",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "type": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "template": "Template",
+                  "Value": "Average Duration (s)"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "title": "Error Distribution by Type",
+          "type": "piechart",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "values": ["value", "percent"]
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(increase(pdf_generation_errors_total[24h])) by (error_type)",
+              "legendFormat": "{{error_type}}"
+            }
+          ]
+        }
+      ],
+      "annotations": {
+        "list": [
+          {
+            "name": "Deployments",
+            "datasource": "Prometheus",
+            "expr": "changes(kube_deployment_status_observed_generation{deployment=~\"nas-pdf-service\"}[5m])",
+            "tagKeys": ["deployment"],
+            "titleFormat": "Deployment",
+            "textFormat": "Deployment of {{deployment}}"
+          }
+        ]
+      }
     } 
