@@ -161,4 +161,63 @@ spec:
         severity: warning
       annotations:
         summary: "Низкая эффективность кэша"
-        description: "Эффективность кэша ниже 50% в течение 30 минут" 
+        description: "Эффективность кэша ниже 50% в течение 30 минут"
+
+  - name: tracing
+    rules:
+    - alert: TracingExportLatencyHigh
+      expr: histogram_quantile(0.95, sum(rate(otel_trace_export_duration_seconds_bucket[5m])) by (le)) > 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Высокая латентность экспорта трейсов"
+        description: "95-й перцентиль времени экспорта трейсов превышает 1 секунду"
+
+    - alert: TracingQueueNearlyFull
+      expr: otel_trace_span_queue_size > 1800 # 90% от максимума в 2048
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Очередь трейсов почти заполнена"
+        description: "Размер очереди трейсов превышает 90% от максимального значения"
+
+    - alert: TracingDroppedSpans
+      expr: rate(otel_trace_span_drops_total[5m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Обнаружены отброшенные спаны"
+        description: "Сервис отбрасывает спаны, возможно, из-за переполнения очереди"
+
+    - alert: HighErrorRate
+      expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Высокий процент ошибок"
+        description: "Более 5% запросов завершаются с ошибкой 5xx"
+
+    - alert: HighLatency
+      expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler)) > 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Высокая латентность запросов"
+        description: "95-й перцентиль времени ответа превышает 2 секунды для {{ $labels.handler }}"
+
+    - record: tracing:span_duration:p95
+      expr: histogram_quantile(0.95, sum(rate(otel_trace_span_duration_milliseconds_bucket[5m])) by (le, name))
+
+    - record: tracing:span_duration:p99
+      expr: histogram_quantile(0.99, sum(rate(otel_trace_span_duration_milliseconds_bucket[5m])) by (le, name))
+
+    - record: tracing:error_spans:ratio
+      expr: sum(rate(otel_trace_span_events_total{status="error"}[5m])) / sum(rate(otel_trace_span_events_total[5m]))
+
+    - record: tracing:spans:rate
+      expr: sum(rate(otel_trace_span_events_total[5m])) by (name) 

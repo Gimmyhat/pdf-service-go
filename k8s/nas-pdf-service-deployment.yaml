@@ -43,6 +43,16 @@ spec:
           value: "2"
         - name: DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD
           value: "2"
+        - name: GOTENBERG_URL
+          value: "http://nas-gotenberg:3000"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "nas-jaeger:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "nas-pdf-service"
+        - name: OTEL_ENVIRONMENT
+          value: "production"
+        - name: OTEL_TRACES_SAMPLER
+          value: "always_on"
         envFrom:
         - configMapRef:
             name: nas-pdf-service-config
@@ -75,4 +85,17 @@ spec:
         configMap:
           name: nas-pdf-service-templates
       - name: tmp-storage
-        emptyDir: {} 
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-pdf-service
+spec:
+  selector:
+    app: nas-pdf-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 31005
+  type: NodePort 

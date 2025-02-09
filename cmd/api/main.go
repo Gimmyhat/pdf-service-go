@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"pdf-service-go/internal/api"
 	"pdf-service-go/internal/api/handlers"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/tracing"
+	"time"
 )
 
 func main() {
@@ -18,6 +21,26 @@ func main() {
 		panic("failed to initialize logger: " + err.Error())
 	}
 	defer logger.Log.Sync()
+
+	// Инициализируем трейсинг
+	tracingConfig := tracing.Config{
+		ServiceName:    os.Getenv("OTEL_SERVICE_NAME"),
+		ServiceVersion: os.Getenv("VERSION"),
+		Environment:    os.Getenv("OTEL_ENVIRONMENT"),
+		CollectorURL:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+	}
+
+	shutdown, err := tracing.InitTracer(tracingConfig)
+	if err != nil {
+		logger.Fatal("Failed to initialize tracer", logger.Field("error", err))
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(ctx); err != nil {
+			logger.Error("Failed to shutdown tracer", logger.Field("error", err))
+		}
+	}()
 
 	// Получаем URL Gotenberg из переменной окружения
 	gotenbergURL := os.Getenv("GOTENBERG_API_URL")

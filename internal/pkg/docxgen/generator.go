@@ -3,6 +3,7 @@ package docxgen
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -13,12 +14,16 @@ import (
 	"pdf-service-go/internal/pkg/cache"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/tracing"
 
+	"bytes"
 	"encoding/hex"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -71,9 +76,11 @@ type Config struct {
 
 // Generator представляет генератор DOCX файлов с Circuit Breaker
 type Generator struct {
-	config Config
-	cb     *circuitbreaker.CircuitBreaker
-	cache  *cache.Cache
+	config       Config
+	cb           *circuitbreaker.CircuitBreaker
+	cache        *cache.Cache
+	tempManager  *TempManager
+	gotenbergURL string
 }
 
 // getEnvWithDefault возвращает значение переменной окружения или значение по умолчанию
@@ -117,11 +124,13 @@ func NewGenerator(scriptPath string) *Generator {
 		CacheTTL:         getEnvDurationWithDefault("DOCX_TEMPLATE_CACHE_TTL", 5*time.Minute),
 	}
 
-	// Запускаем очистку временных файлов
-	tempFileManager.StartCleanupRoutine(
+	tempManager, err := NewTempManager(
+		os.TempDir(),
 		getEnvDurationWithDefault("DOCX_TEMP_CLEANUP_INTERVAL", 1*time.Minute),
-		getEnvDurationWithDefault("DOCX_TEMP_MAX_AGE", 5*time.Minute),
 	)
+	if err != nil {
+		logger.Error("Failed to create temp manager", zap.Error(err))
+	}
 
 	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		Name:             "docx-generator",
@@ -134,9 +143,11 @@ func NewGenerator(scriptPath string) *Generator {
 	})
 
 	return &Generator{
-		config: config,
-		cb:     cb,
-		cache:  cache.NewCache(config.CacheTTL),
+		config:       config,
+		cb:           cb,
+		cache:        cache.NewCache(config.CacheTTL),
+		tempManager:  tempManager,
+		gotenbergURL: getEnvWithDefault("GOTENBERG_URL", "http://nas-gotenberg:3000"),
 	}
 }
 
@@ -159,10 +170,11 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 
 	// Пытаемся получить шаблон из кэша
 	templateName := filepath.Base(templatePath)
-	if cachedTemplate, ok := g.cache.Get(templateName); ok {
+	template, err := g.cache.Get(ctx, templateName)
+	if err == nil {
 		// Создаем временный файл из кэшированных данных с оригинальным именем
 		tempPath = filepath.Join(tempDir, templateName)
-		if err = os.WriteFile(tempPath, cachedTemplate, 0644); err != nil {
+		if err = os.WriteFile(tempPath, template, 0644); err != nil {
 			logger.Error("Failed to write cached template",
 				zap.Error(err),
 				zap.String("template", templatePath),
@@ -267,4 +279,68 @@ func (g *Generator) State() circuitbreaker.State {
 // IsHealthy возвращает true, если Circuit Breaker в здоровом состоянии
 func (g *Generator) IsHealthy() bool {
 	return g.cb.IsHealthy()
+}
+
+// GeneratePDF генерирует PDF из DOCX шаблона
+func (g *Generator) GeneratePDF(ctx context.Context, templateName string, data interface{}) ([]byte, error) {
+	ctx, span := tracing.StartSpan(ctx, "GeneratePDF")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("template.name", templateName))
+
+	// Получаем шаблон из кэша
+	ctx, cacheSpan := tracing.StartSpan(ctx, "GetTemplateFromCache")
+	template, err := g.cache.Get(ctx, templateName)
+	cacheSpan.End()
+
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, fmt.Errorf("failed to get template from cache: %w", err)
+	}
+
+	// Создаем временный файл для заполненного шаблона
+	ctx, tempSpan := tracing.StartSpan(ctx, "CreateTempFile")
+	filledTemplate, err := g.tempManager.CreateTemp(ctx, "filled-*.docx")
+	tempSpan.End()
+
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer filledTemplate.Close()
+
+	// Заполняем шаблон данными
+	ctx, fillSpan := tracing.StartSpan(ctx, "FillTemplate")
+	templateReader := bytes.NewReader(template)
+	err = g.fillTemplate(templateReader, data, filledTemplate)
+	fillSpan.End()
+
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, fmt.Errorf("failed to fill template: %w", err)
+	}
+
+	// Конвертируем DOCX в PDF
+	ctx, convertSpan := tracing.StartSpan(ctx, "ConvertToPDF")
+	pdf, err := g.convertToPDF(ctx, filledTemplate.Name())
+	convertSpan.End()
+
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, fmt.Errorf("failed to convert to PDF: %w", err)
+	}
+
+	return pdf, nil
+}
+
+// fillTemplate заполняет шаблон данными
+func (g *Generator) fillTemplate(template io.Reader, data interface{}, output io.Writer) error {
+	// Временная реализация
+	return fmt.Errorf("not implemented")
+}
+
+// convertToPDF конвертирует DOCX файл в PDF
+func (g *Generator) convertToPDF(ctx context.Context, docxPath string) ([]byte, error) {
+	// Временная реализация
+	return nil, fmt.Errorf("not implemented")
 }

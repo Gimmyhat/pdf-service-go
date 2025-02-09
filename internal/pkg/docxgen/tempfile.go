@@ -1,6 +1,7 @@
 package docxgen
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -10,9 +11,12 @@ import (
 	"time"
 
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/tracing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -156,4 +160,96 @@ func (tm *TempFileManager) StartCleanupRoutine(interval, maxAge time.Duration) {
 			tm.Cleanup(maxAge)
 		}
 	}()
+}
+
+// TempManager управляет временными файлами
+type TempManager struct {
+	dir           string
+	cleanupPeriod time.Duration
+}
+
+// NewTempManager создает новый менеджер временных файлов
+func NewTempManager(dir string, cleanupPeriod time.Duration) (*TempManager, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	tm := &TempManager{
+		dir:           dir,
+		cleanupPeriod: cleanupPeriod,
+	}
+
+	go tm.startCleanup()
+	return tm, nil
+}
+
+// CreateTemp создает временный файл
+func (tm *TempManager) CreateTemp(ctx context.Context, pattern string) (*os.File, error) {
+	ctx, span := tracing.StartSpan(ctx, "TempManager.CreateTemp")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("temp.dir", tm.dir),
+		attribute.String("temp.pattern", pattern),
+	)
+
+	file, err := os.CreateTemp(tm.dir, pattern)
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	span.SetAttributes(attribute.String("temp.file", file.Name()))
+	span.AddEvent("Temporary file created")
+
+	return file, nil
+}
+
+// Cleanup удаляет старые временные файлы
+func (tm *TempManager) Cleanup(ctx context.Context) error {
+	ctx, span := tracing.StartSpan(ctx, "TempManager.Cleanup")
+	defer span.End()
+
+	threshold := time.Now().Add(-tm.cleanupPeriod)
+	var deletedCount int
+
+	err := filepath.Walk(tm.dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() && info.ModTime().Before(threshold) {
+			if err := os.Remove(path); err != nil {
+				tracing.RecordError(ctx, fmt.Errorf("failed to remove file %s: %w", path, err))
+				return err
+			}
+			deletedCount++
+		}
+		return nil
+	})
+
+	if err != nil {
+		tracing.RecordError(ctx, err)
+		return fmt.Errorf("cleanup failed: %w", err)
+	}
+
+	span.SetAttributes(attribute.Int("temp.files.deleted", deletedCount))
+	span.AddEvent("Cleanup completed")
+
+	return nil
+}
+
+// startCleanup запускает периодическую очистку
+func (tm *TempManager) startCleanup() {
+	ticker := time.NewTicker(tm.cleanupPeriod)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		ctx := context.Background()
+		if err := tm.Cleanup(ctx); err != nil {
+			// Логируем ошибку, но продолжаем работу
+			span := trace.SpanFromContext(ctx)
+			span.RecordError(err)
+		}
+	}
 }
