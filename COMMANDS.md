@@ -250,6 +250,16 @@ curl http://localhost:8080/metrics
 # - gotenberg_request_duration_seconds: длительность запросов к Gotenberg
 # - http_requests_total: общее количество HTTP запросов
 # - http_request_duration_seconds: длительность HTTP запросов
+
+# Метрики временных файлов:
+# - docx_temp_file_creations_total: количество созданных временных файлов
+# - docx_temp_file_errors_total: количество ошибок при работе с файлами
+# - docx_temp_files_current: текущее количество активных файлов
+# - docx_temp_file_age_seconds: возраст файлов при удалении
+# - docx_temp_dir_size_bytes: текущий размер временной директории
+# - docx_temp_file_size_bytes: размер временных файлов
+# - docx_temp_memory_usage_bytes: текущее использование памяти
+# - docx_temp_memory_limit_bytes: лимит памяти для временных файлов
 ```
 
 ### Grafana

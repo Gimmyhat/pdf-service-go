@@ -36,9 +36,9 @@ spec:
         - name: DOCX_TEMPLATE_CACHE_TTL
           value: "5m"
         - name: DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD
-          value: "3"
+          value: "5"
         - name: DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT
-          value: "5s"
+          value: "3s"
         - name: DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS
           value: "2"
         - name: DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD
@@ -46,11 +46,11 @@ spec:
         - name: GOTENBERG_URL
           value: "http://nas-gotenberg:3000"
         - name: GOTENBERG_RETRY_MAX_ATTEMPTS
-          value: "2"
+          value: "3"
         - name: GOTENBERG_RETRY_INITIAL_DELAY
-          value: "50ms"
+          value: "25ms"
         - name: GOTENBERG_RETRY_MAX_DELAY
-          value: "200ms"
+          value: "100ms"
         - name: GOTENBERG_RETRY_BACKOFF_FACTOR
           value: "1.5"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -63,10 +63,10 @@ spec:
           value: "always_on"
         resources:
           requests:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "500m"
           limits:
-            memory: "1Gi"
+            memory: "2Gi"
             cpu: "1000m"
         envFrom:
         - configMapRef:
@@ -93,7 +93,9 @@ spec:
         configMap:
           name: nas-pdf-service-templates
       - name: tmp-storage
-        emptyDir: {}
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Mi
 ---
 apiVersion: v1
 kind: Service

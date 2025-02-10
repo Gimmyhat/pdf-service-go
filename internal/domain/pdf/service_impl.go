@@ -57,7 +57,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	}
 
 	// Создаем временные файлы через TempManager
-	dataFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, "*.json")
+	dataFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("data-%d-%x-*.json", time.Now().UnixNano(), time.Now().Nanosecond()))
 	if err != nil {
 		log.Error("Failed to create temp JSON file", zap.Error(err))
 		metrics.RequestsTotal.WithLabelValues("failed").Inc()
@@ -66,7 +66,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	defer dataFile.Close()
 	defer os.Remove(dataFile.Name())
 
-	docxFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, "*.docx")
+	docxFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("docx-%d-%x-*.docx", time.Now().UnixNano(), time.Now().Nanosecond()))
 	if err != nil {
 		log.Error("Failed to create temp DOCX file", zap.Error(err))
 		metrics.RequestsTotal.WithLabelValues("failed").Inc()

@@ -335,7 +335,7 @@ func (g *Generator) GeneratePDF(ctx context.Context, templateName string, data i
 
 	// Создаем временный файл для заполненного шаблона
 	ctx, tempSpan := tracing.StartSpan(ctx, "CreateTempFile")
-	filledTemplate, err := g.tempManager.CreateTemp(ctx, "filled-*.docx")
+	filledTemplate, err := g.tempManager.CreateTemp(ctx, fmt.Sprintf("filled-%d-%x-*.docx", time.Now().UnixNano(), time.Now().Nanosecond()))
 	tempSpan.End()
 
 	if err != nil {
