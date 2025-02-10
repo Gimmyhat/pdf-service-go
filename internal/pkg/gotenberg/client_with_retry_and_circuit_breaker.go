@@ -28,24 +28,24 @@ func NewClientWithRetryAndCircuitBreaker(baseURL string) *ClientWithRetryAndCirc
 
 	client := NewClient(baseURL)
 
-	// Создаем circuit breaker
+	// Создаем circuit breaker с оптимизированными настройками
 	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		Name:             "gotenberg",
-		FailureThreshold: getEnvIntWithDefault("CIRCUIT_BREAKER_FAILURE_THRESHOLD", 5),
-		ResetTimeout:     getEnvDurationWithDefault("CIRCUIT_BREAKER_RESET_TIMEOUT", 10*time.Second),
-		HalfOpenMaxCalls: getEnvIntWithDefault("CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS", 2),
-		SuccessThreshold: getEnvIntWithDefault("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", 2),
+		FailureThreshold: getEnvIntWithDefault("CIRCUIT_BREAKER_FAILURE_THRESHOLD", 10),
+		ResetTimeout:     getEnvDurationWithDefault("CIRCUIT_BREAKER_RESET_TIMEOUT", 5*time.Second),
+		HalfOpenMaxCalls: getEnvIntWithDefault("CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS", 5),
+		SuccessThreshold: getEnvIntWithDefault("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", 3),
 		PodName:          os.Getenv("POD_NAME"),
 		Namespace:        os.Getenv("POD_NAMESPACE"),
 	})
 
-	// Создаем retrier
+	// Создаем retrier с оптимизированными настройками
 	retrier := retry.New(
 		"gotenberg",
 		logger.Log,
-		retry.WithMaxAttempts(getEnvIntWithDefault("GOTENBERG_RETRY_MAX_ATTEMPTS", 3)),
-		retry.WithInitialDelay(getEnvDurationWithDefault("GOTENBERG_RETRY_INITIAL_DELAY", 100*time.Millisecond)),
-		retry.WithMaxDelay(getEnvDurationWithDefault("GOTENBERG_RETRY_MAX_DELAY", 2*time.Second)),
+		retry.WithMaxAttempts(getEnvIntWithDefault("GOTENBERG_RETRY_MAX_ATTEMPTS", 5)),
+		retry.WithInitialDelay(getEnvDurationWithDefault("GOTENBERG_RETRY_INITIAL_DELAY", 50*time.Millisecond)),
+		retry.WithMaxDelay(getEnvDurationWithDefault("GOTENBERG_RETRY_MAX_DELAY", 1*time.Second)),
 		retry.WithBackoffFactor(float64(getEnvIntWithDefault("GOTENBERG_RETRY_BACKOFF_FACTOR", 2))),
 	)
 
@@ -59,8 +59,8 @@ func NewClientWithRetryAndCircuitBreaker(baseURL string) *ClientWithRetryAndCirc
 // ConvertDocxToPDF конвертирует DOCX в PDF с использованием retry и circuit breaker механизмов
 func (c *ClientWithRetryAndCircuitBreaker) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 	var result []byte
-	err := c.cb.Execute(context.Background(), func() error {
-		return c.retrier.Do(context.Background(), func(ctx context.Context) error {
+	err := c.retrier.Do(context.Background(), func(ctx context.Context) error {
+		return c.cb.Execute(ctx, func() error {
 			var err error
 			result, err = c.client.ConvertDocxToPDF(docxPath)
 			return err

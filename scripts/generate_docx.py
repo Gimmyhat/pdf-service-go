@@ -1,7 +1,15 @@
-from docxtpl import DocxTemplate
-import json
+#!/usr/bin/env python3
 import sys
+import json
+import os
+from docxtpl import DocxTemplate
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
+import logging
 from datetime import datetime
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def generate_applicant_info(data):
     """Генерирует информацию о заявителе на основе данных запроса."""
@@ -32,42 +40,46 @@ def generate_applicant_info(data):
             
     return ''
 
-def generate_docx(template_path, data_path, output_path):
-    # Загружаем шаблон
-    doc = DocxTemplate(template_path)
-    
-    # Читаем данные
-    with open(data_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    # Подготавливаем контекст
-    context = {
-        'id': data['id'],
-        'geoInfoStorageOrganization': data['geoInfoStorageOrganization'],
-        'phone': data['phone'],
-        'email': data['email'],
-        'purposeOfGeoInfoAccessDictionary': data['purposeOfGeoInfoAccessDictionary'],
-        'creationDate': datetime.fromisoformat(data['creationDate'].replace('Z', '+00:00')).strftime('%d.%m.%Y'),
-        'registryItems': data['registryItems'],
-        'applicant_info': generate_applicant_info(data)
-    }
-    
-    if data['applicantType'] == 'INDIVIDUAL' and data['individualInfo']:
-        context['applicant_name'] = data['individualInfo']['name']
-    elif data['organizationInfo']:
-        context['applicant_name'] = data['organizationInfo']['name']
-    
-    # Рендерим документ
-    doc.render(context)
-    doc.save(output_path)
+def process_template(template_path, data, output_path):
+    try:
+        doc = DocxTemplate(template_path)
+        doc.render(data)
+        doc.save(output_path)
+        return True
+    except Exception as e:
+        logger.error(f"Error processing template: {e}")
+        return False
 
-if __name__ == '__main__':
+def main():
     if len(sys.argv) != 4:
-        print('Usage: python generate_docx.py template_path data_path output_path')
+        print("Usage: generate_docx.py <template_path> <data_path> <output_path>")
         sys.exit(1)
-    
+
     template_path = sys.argv[1]
     data_path = sys.argv[2]
     output_path = sys.argv[3]
+
+    try:
+        with open(data_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        logger.error(f"Error reading data file: {e}")
+        sys.exit(1)
+
+    # Проверяем флаг параллельной обработки
+    parallel_processing = os.environ.get('DOCX_PARALLEL_PROCESSING', '').lower() == 'true'
     
-    generate_docx(template_path, data_path, output_path) 
+    if parallel_processing:
+        # Используем ThreadPoolExecutor для параллельной обработки
+        max_workers = min(multiprocessing.cpu_count(), 4)  # Ограничиваем максимальное количество потоков
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future = executor.submit(process_template, template_path, data, output_path)
+            if not future.result():
+                sys.exit(1)
+    else:
+        # Последовательная обработка
+        if not process_template(template_path, data, output_path):
+            sys.exit(1)
+
+if __name__ == '__main__':
+    main() 

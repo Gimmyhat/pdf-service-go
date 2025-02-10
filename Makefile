@@ -108,7 +108,7 @@ deploy: check-image check-cluster-connection check-env
 	$(call retry_kubectl,kubectl rollout status deployment/nas-grafana -n print-serv)
 	$(call retry_kubectl,kubectl rollout status deployment/nas-jaeger -n print-serv)
 	@echo "Deploying application services..."
-	$(call retry_kubectl,kubectl apply -f k8s/configmap.yaml)
+	@powershell -Command "(Get-Content k8s/configmap.yaml) -replace 'OTEL_SERVICE_VERSION: .*', 'OTEL_SERVICE_VERSION: $(VERSION)'" | kubectl apply -f -
 	$(call retry_kubectl,kubectl apply -f k8s/gotenberg-deployment.yaml)
 	$(call retry_kubectl,kubectl rollout status deployment/nas-gotenberg -n print-serv)
 	@echo "Updating template and deploying PDF service..."

@@ -31,8 +31,9 @@ RUN apk add --no-cache \
     harfbuzz-dev \
     fribidi-dev
 
-# Устанавливаем зависимости Python
-RUN pip install --no-cache-dir docxtpl python-docx lxml Pillow
+# Копируем requirements.txt и устанавливаем зависимости Python
+COPY --from=builder /app/scripts/requirements.txt ./scripts/
+RUN pip install --no-cache-dir -r scripts/requirements.txt
 
 # Копируем собранное Go приложение
 COPY --from=builder /app/main .

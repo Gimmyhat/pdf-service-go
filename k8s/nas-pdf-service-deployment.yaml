@@ -32,7 +32,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: MAX_CONCURRENT_REQUESTS
-          value: "4"
+          value: "8"
         - name: DOCX_TEMPLATE_CACHE_TTL
           value: "5m"
         - name: DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD
@@ -45,6 +45,14 @@ spec:
           value: "2"
         - name: GOTENBERG_URL
           value: "http://nas-gotenberg:3000"
+        - name: GOTENBERG_RETRY_MAX_ATTEMPTS
+          value: "2"
+        - name: GOTENBERG_RETRY_INITIAL_DELAY
+          value: "50ms"
+        - name: GOTENBERG_RETRY_MAX_DELAY
+          value: "200ms"
+        - name: GOTENBERG_RETRY_BACKOFF_FACTOR
+          value: "1.5"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "nas-jaeger:4317"
         - name: OTEL_SERVICE_NAME
@@ -53,14 +61,13 @@ spec:
           value: "production"
         - name: OTEL_TRACES_SAMPLER
           value: "always_on"
-        - name: DOCX_RETRY_MAX_ATTEMPTS
-          value: "3"
-        - name: DOCX_RETRY_INITIAL_DELAY
-          value: "1s"
-        - name: DOCX_RETRY_MAX_DELAY
-          value: "10s"
-        - name: DOCX_RETRY_BACKOFF_FACTOR
-          value: "3"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
         envFrom:
         - configMapRef:
             name: nas-pdf-service-config
@@ -73,21 +80,14 @@ spec:
           httpGet:
             path: /health
             port: http
-          initialDelaySeconds: 10
+          initialDelaySeconds: 5
           periodSeconds: 5
         livenessProbe:
           httpGet:
             path: /health
             port: http
-          initialDelaySeconds: 15
+          initialDelaySeconds: 10
           periodSeconds: 10
-        resources:
-          requests:
-            memory: "384Mi"
-            cpu: "300m"
-          limits:
-            memory: "768Mi"
-            cpu: "600m"
       volumes:
       - name: templates
         configMap:

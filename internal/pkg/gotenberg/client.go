@@ -16,11 +16,29 @@ import (
 
 type Client struct {
 	baseURL string
+	client  *http.Client
 }
 
 func NewClient(baseURL string) *Client {
+	transport := &http.Transport{
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+		MaxConnsPerHost:     100,
+		ForceAttemptHTTP2:   true,
+		WriteBufferSize:     64 * 1024,
+		ReadBufferSize:      64 * 1024,
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+
 	return &Client{
 		baseURL: baseURL,
+		client:  client,
 	}
 }
 
@@ -31,12 +49,12 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 		metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(duration)
 	}()
 
-	// Создаем буфер для multipart формы
+	// Создаем буфер для multipart формы с оптимизированным размером
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	// Открываем файл DOCX
-	file, err := os.Open(docxPath)
+	// Открываем файл DOCX с буферизированным чтением
+	file, err := os.OpenFile(docxPath, os.O_RDONLY, 0)
 	if err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to open DOCX file: %w", err)
@@ -50,8 +68,9 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create form file: %w", err)
 	}
 
-	// Копируем содержимое файла в форму
-	if _, err := io.Copy(part, file); err != nil {
+	// Используем буферизированное копирование для улучшения производительности
+	copyBuf := make([]byte, 64*1024)
+	if _, err := io.CopyBuffer(part, file, copyBuf); err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to copy file content: %w", err)
 	}
@@ -62,19 +81,19 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to close writer: %w", err)
 	}
 
-	// Создаем запрос к Gotenberg
+	// Создаем запрос к Gotenberg с оптимизированными заголовками
 	req, err := http.NewRequest("POST", c.baseURL+"/forms/libreoffice/convert", body)
 	if err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Устанавливаем заголовки
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Connection", "keep-alive")
 
 	// Отправляем запрос
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to send request: %w", err)
@@ -88,13 +107,13 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 		return nil, fmt.Errorf("conversion failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Читаем PDF из ответа
-	pdfContent, err := io.ReadAll(resp.Body)
-	if err != nil {
+	// Читаем PDF из ответа с буферизацией
+	responseBuf := new(bytes.Buffer)
+	if _, err := io.Copy(responseBuf, resp.Body); err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	metrics.GotenbergRequestsTotal.WithLabelValues("success").Inc()
-	return pdfContent, nil
+	return responseBuf.Bytes(), nil
 }

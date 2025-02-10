@@ -19,10 +19,10 @@ type Config struct {
 // DefaultConfig возвращает конфигурацию по умолчанию
 func DefaultConfig() *Config {
 	return &Config{
-		MaxAttempts:   3,
-		InitialDelay:  1 * time.Second,
-		MaxDelay:      10 * time.Second,
-		BackoffFactor: 3.0,
+		MaxAttempts:   2,
+		InitialDelay:  50 * time.Millisecond,
+		MaxDelay:      200 * time.Millisecond,
+		BackoffFactor: 1.5,
 	}
 }
 

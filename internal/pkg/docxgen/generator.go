@@ -17,6 +17,7 @@ import (
 	"pdf-service-go/internal/pkg/retry"
 	"pdf-service-go/internal/pkg/tracing"
 
+	"bufio"
 	"bytes"
 	"encoding/hex"
 
@@ -136,10 +137,11 @@ func NewGenerator(scriptPath string) *Generator {
 		RetryBackoffFactor: float64(getEnvIntWithDefault("DOCX_RETRY_BACKOFF_FACTOR", 2)),
 	}
 
-	tempManager, err := NewTempManager(
-		os.TempDir(),
-		getEnvDurationWithDefault("DOCX_TEMP_CLEANUP_INTERVAL", 1*time.Minute),
-	)
+	tempManager, err := NewTempManager(TempManagerConfig{
+		Dir:           os.TempDir(),
+		CleanupPeriod: getEnvDurationWithDefault("DOCX_TEMP_CLEANUP_INTERVAL", 1*time.Minute),
+		MaxDirSize:    1024 * 1024 * 1024, // 1GB по умолчанию
+	})
 	if err != nil {
 		logger.Error("Failed to create temp manager", zap.Error(err))
 	}
@@ -179,10 +181,23 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	start := time.Now()
 	docxGenerationTotal.WithLabelValues("started").Inc()
 
-	var tempPath string
-	var err error
+	// Пытаемся получить шаблон из кэша
+	templateName := filepath.Base(templatePath)
+	template, err := g.cache.Get(ctx, templateName)
+	if err != nil {
+		// Если шаблона нет в кэше, читаем его и сохраняем
+		template, err = ioutil.ReadFile(templatePath)
+		if err != nil {
+			logger.Error("Failed to read template",
+				zap.Error(err),
+				zap.String("template", templatePath),
+			)
+			return err
+		}
+		g.cache.Set(templateName, template)
+	}
 
-	// Создаем временную директорию для файлов этого запроса
+	// Создаем временную директорию для выходного файла
 	tempDir, err := os.MkdirTemp("", "docx_gen_")
 	if err != nil {
 		logger.Error("Failed to create temp directory",
@@ -191,58 +206,46 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Пытаемся получить шаблон из кэша
-	templateName := filepath.Base(templatePath)
-	template, err := g.cache.Get(ctx, templateName)
-	if err == nil {
-		// Создаем временный файл из кэшированных данных с оригинальным именем
-		tempPath = filepath.Join(tempDir, templateName)
-		if err = os.WriteFile(tempPath, template, 0644); err != nil {
-			logger.Error("Failed to write cached template",
-				zap.Error(err),
-				zap.String("template", templatePath),
-			)
-			return err
-		}
-		templatePath = tempPath
-	} else {
-		// Если шаблона нет в кэше, читаем его и сохраняем
-		templateData, err := ioutil.ReadFile(templatePath)
-		if err != nil {
-			logger.Error("Failed to read template",
-				zap.Error(err),
-				zap.String("template", templatePath),
-			)
-			return err
-		}
-		g.cache.Set(templateName, templateData)
-
-		// Создаем временный файл с оригинальным именем
-		tempPath = filepath.Join(tempDir, templateName)
-		if err = os.WriteFile(tempPath, templateData, 0644); err != nil {
-			logger.Error("Failed to write template",
-				zap.Error(err),
-				zap.String("template", templatePath),
-			)
-			return err
-		}
-		templatePath = tempPath
+	// Создаем временный файл для шаблона с буферизированной записью
+	tempPath := filepath.Join(tempDir, templateName)
+	templateFile, err := os.OpenFile(tempPath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		logger.Error("Failed to create template file",
+			zap.Error(err))
+		return err
 	}
+	bufWriter := bufio.NewWriter(templateFile)
+	if _, err = bufWriter.Write(template); err != nil {
+		templateFile.Close()
+		logger.Error("Failed to write template",
+			zap.Error(err))
+		return err
+	}
+	if err = bufWriter.Flush(); err != nil {
+		templateFile.Close()
+		logger.Error("Failed to flush template buffer",
+			zap.Error(err))
+		return err
+	}
+	templateFile.Close()
 
-	// Создаем временный файл для выходного DOCX со случайным именем
+	// Создаем временный файл для выходного DOCX
 	outputDocx := filepath.Join(tempDir, fmt.Sprintf("output_%s.docx",
 		hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))))
 
 	// Оборачиваем выполнение Python-скрипта в retry механизм
 	err = g.retrier.Do(ctx, func(ctx context.Context) error {
 		return g.cb.Execute(ctx, func() error {
-			cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, templatePath, dataPath, outputDocx)
+			// Устанавливаем переменную окружения для параллельной обработки
+			cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, tempPath, dataPath, outputDocx)
+			cmd.Env = append(os.Environ(), "DOCX_PARALLEL_PROCESSING=true")
+
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				logger.Error("Failed to generate DOCX",
 					zap.Error(err),
 					zap.String("output", string(output)),
-					zap.String("template", templatePath),
+					zap.String("template", tempPath),
 					zap.String("data", dataPath),
 					zap.String("output_docx", outputDocx),
 				)
@@ -250,21 +253,27 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 				return err
 			}
 
-			// Копируем сгенерированный файл в целевую директорию
-			outputData, err := os.ReadFile(outputDocx)
+			// Используем буферизированное копирование для выходного файла
+			outputFile, err := os.Create(outputPath)
 			if err != nil {
-				logger.Error("Failed to read generated DOCX",
-					zap.Error(err),
-					zap.String("path", outputDocx),
-				)
+				logger.Error("Failed to create output file",
+					zap.Error(err))
 				return err
 			}
+			defer outputFile.Close()
 
-			if err = os.WriteFile(outputPath, outputData, 0644); err != nil {
-				logger.Error("Failed to write output file",
-					zap.Error(err),
-					zap.String("path", outputPath),
-				)
+			inputFile, err := os.Open(outputDocx)
+			if err != nil {
+				logger.Error("Failed to open generated DOCX",
+					zap.Error(err))
+				return err
+			}
+			defer inputFile.Close()
+
+			bufCopy := make([]byte, 1024*1024) // 1MB buffer
+			if _, err = io.CopyBuffer(outputFile, inputFile, bufCopy); err != nil {
+				logger.Error("Failed to copy output file",
+					zap.Error(err))
 				return err
 			}
 
@@ -370,4 +379,9 @@ func (g *Generator) fillTemplate(template io.Reader, _ interface{}, output io.Wr
 func (g *Generator) convertToPDF(_ context.Context, _ string) ([]byte, error) {
 	// Временная реализация
 	return nil, fmt.Errorf("not implemented")
+}
+
+// GetTempManager возвращает менеджер временных файлов
+func (g *Generator) GetTempManager() *TempManager {
+	return g.tempManager
 }

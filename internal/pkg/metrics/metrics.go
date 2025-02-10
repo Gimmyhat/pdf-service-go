@@ -51,7 +51,7 @@ var (
 			Help:    "Size of generated PDF files in bytes",
 			Buckets: []float64{1024, 10 * 1024, 100 * 1024, 1024 * 1024, 10 * 1024 * 1024},
 		},
-		[]string{"template"},
+		[]string{"operation"},
 	)
 
 	// GotenbergRequestsTotal количество запросов к Gotenberg
