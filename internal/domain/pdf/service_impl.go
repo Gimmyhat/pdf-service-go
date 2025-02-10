@@ -38,21 +38,21 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start).Seconds()
-		metrics.PDFGenerationDuration.WithLabelValues(req.ID).Observe(duration)
+		metrics.HTTPRequestDuration.WithLabelValues("POST", "/generate-pdf").Observe(duration)
 		log.Info("PDF generation completed",
 			zap.Float64("duration_seconds", duration),
 		)
 	}()
 
 	// Увеличиваем счетчик общего количества запросов
-	metrics.RequestsTotal.WithLabelValues("total").Inc()
+	metrics.RequestsTotal.WithLabelValues("started").Inc()
 	log.Info("Starting PDF generation")
 
 	// Проверяем наличие шаблона
 	templatePath := filepath.Join("internal/domain/pdf/templates", "template.docx")
 	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
 		log.Error("Template file not found", zap.String("path", templatePath))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, ErrTemplateNotFound
 	}
 
@@ -60,7 +60,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	dataFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("data-%d-%x-*.json", time.Now().UnixNano(), time.Now().Nanosecond()))
 	if err != nil {
 		log.Error("Failed to create temp JSON file", zap.Error(err))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to create temp JSON file: %w", err)
 	}
 	defer dataFile.Close()
@@ -69,7 +69,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	docxFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("docx-%d-%x-*.docx", time.Now().UnixNano(), time.Now().Nanosecond()))
 	if err != nil {
 		log.Error("Failed to create temp DOCX file", zap.Error(err))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to create temp DOCX file: %w", err)
 	}
 	defer docxFile.Close()
@@ -79,13 +79,13 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	data, err := json.Marshal(req)
 	if err != nil {
 		log.Error("Failed to marshal request data", zap.Error(err))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 
 	if _, err = dataFile.Write(data); err != nil {
 		log.Error("Failed to write data file", zap.Error(err))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to write data file: %w", err)
 	}
 
@@ -93,7 +93,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	log.Info("Starting DOCX generation")
 	if err := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
 		log.Error("Failed to generate DOCX", zap.Error(err))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
 	}
 
@@ -103,7 +103,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	pdfContent, err := s.gotenbergClient.ConvertDocxToPDF(docxFile.Name())
 	if err != nil {
 		log.Error("Failed to convert to PDF", zap.Error(err))
-		metrics.RequestsTotal.WithLabelValues("failed").Inc()
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to convert to PDF: %w", err)
 	}
@@ -120,7 +120,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 
 	// Успешное завершение
 	metrics.RequestsTotal.WithLabelValues("completed").Inc()
-	metrics.PDFFileSizeBytes.WithLabelValues(req.Operation).Observe(float64(len(pdfContent)))
+	metrics.PDFFileSizeBytes.WithLabelValues("generate-pdf").Observe(float64(len(pdfContent)))
 
 	return pdfContent, nil
 }

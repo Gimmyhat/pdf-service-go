@@ -5,6 +5,10 @@ metadata:
   namespace: print-serv
   labels:
     app: nas-pdf-service
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
 spec:
   replicas: 2
   selector:
@@ -14,6 +18,10 @@ spec:
     metadata:
       labels:
         app: nas-pdf-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: nas-pdf-service
@@ -32,21 +40,37 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: MAX_CONCURRENT_REQUESTS
-          value: "8"
+          value: "4"
         - name: DOCX_TEMPLATE_CACHE_TTL
           value: "5m"
         - name: DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD
-          value: "5"
+          value: "10"
         - name: DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT
-          value: "3s"
+          value: "10s"
         - name: DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS
-          value: "2"
+          value: "5"
         - name: DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD
-          value: "2"
+          value: "3"
         - name: GOTENBERG_URL
           value: "http://nas-gotenberg:3000"
-        - name: GOTENBERG_RETRY_MAX_ATTEMPTS
+        - name: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+          value: "10"
+        - name: CIRCUIT_BREAKER_RESET_TIMEOUT
+          value: "10s"
+        - name: CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS
+          value: "5"
+        - name: CIRCUIT_BREAKER_SUCCESS_THRESHOLD
           value: "3"
+        - name: DOCX_RETRY_MAX_ATTEMPTS
+          value: "2"
+        - name: DOCX_RETRY_INITIAL_DELAY
+          value: "50ms"
+        - name: DOCX_RETRY_MAX_DELAY
+          value: "200ms"
+        - name: DOCX_RETRY_BACKOFF_FACTOR
+          value: "1.5"
+        - name: GOTENBERG_RETRY_MAX_ATTEMPTS
+          value: "2"
         - name: GOTENBERG_RETRY_INITIAL_DELAY
           value: "25ms"
         - name: GOTENBERG_RETRY_MAX_DELAY
@@ -94,13 +118,17 @@ spec:
           name: nas-pdf-service-templates
       - name: tmp-storage
         emptyDir:
-          medium: Memory
-          sizeLimit: 512Mi
+          sizeLimit: 2Gi
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: nas-pdf-service
+  namespace: print-serv
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
 spec:
   selector:
     app: nas-pdf-service

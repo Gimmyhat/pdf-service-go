@@ -17,7 +17,7 @@ metadata:
   name: nas-gotenberg
   namespace: print-serv
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: nas-gotenberg
@@ -34,13 +34,16 @@ spec:
         - --api-port=3000
         - --chromium-disable-javascript=true
         - --chromium-allow-list=file:///tmp/.*
-        - --libreoffice-restart-after=20
-        - --libreoffice-start-timeout=20s
-        - --api-timeout=20s
-        - --api-start-timeout=20s
+        - --libreoffice-restart-after=10
+        - --libreoffice-start-timeout=30s
+        - --api-timeout=30s
+        - --api-start-timeout=30s
         - --api-trace-header=X-Request-ID
         - --log-level=info
         - --log-format=json
+        - --chromium-start-timeout=30s
+        - --gotenberg-graceful-shutdown-duration=30s
+        - --webhook-client-timeout=30s
         ports:
         - containerPort: 3000
         resources:
@@ -54,17 +57,24 @@ spec:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 1
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 2
           failureThreshold: 3
           successThreshold: 1
         livenessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          timeoutSeconds: 1
+          initialDelaySeconds: 20
+          periodSeconds: 15
+          timeoutSeconds: 2
           failureThreshold: 3
-          successThreshold: 1 
+          successThreshold: 1
+        volumeMounts:
+        - name: tmp-storage
+          mountPath: /tmp
+      volumes:
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 2Gi 

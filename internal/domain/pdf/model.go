@@ -88,3 +88,13 @@ func (r *DocxRequest) GetApplicantInfo() string {
 	}
 	return ""
 }
+
+// GetFormattedCreationDate возвращает дату создания в формате DD.MM.YYYY
+func (r *DocxRequest) GetFormattedCreationDate() string {
+	return r.CreationDate.Format("02.01.2006")
+}
+
+// GetFormattedCreationDateTime возвращает дату и время создания в формате DD.MM.YYYY HH:mm:ss
+func (r *DocxRequest) GetFormattedCreationDateTime() string {
+	return r.CreationDate.Format("02.01.2006 15:04:05")
+}

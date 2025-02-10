@@ -102,9 +102,9 @@ try {
 
     # Set environment-specific context
     $context = if ($Environment -eq 'prod') {
-        "efgi-irk-prod"
+        "efgi-prod"
     } else {
-        "efgi-irk-test"
+        "efgi-test"
     }
     
     # Test Kubernetes connection

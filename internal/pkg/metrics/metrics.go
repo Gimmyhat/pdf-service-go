@@ -72,4 +72,60 @@ var (
 		},
 		[]string{"operation"},
 	)
+
+	// RetryAttemptsTotal общее количество попыток retry по операциям
+	RetryAttemptsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "retry_attempts_total",
+			Help: "Total number of retry attempts by operation",
+		},
+		[]string{"operation", "attempt", "status"},
+	)
+
+	// RetryOperationDuration длительность операций с учетом retry
+	RetryOperationDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "retry_operation_duration_seconds",
+			Help:    "Duration of retry operations by attempt",
+			Buckets: prometheus.ExponentialBuckets(0.01, 2, 10),
+		},
+		[]string{"operation", "attempt", "status"},
+	)
+
+	// RetryErrorsTotal количество ошибок по типам
+	RetryErrorsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "retry_errors_total",
+			Help: "Total number of retry errors by type",
+		},
+		[]string{"operation", "error_type", "attempt"},
+	)
+
+	// RetryBackoffDuration длительность задержек между попытками
+	RetryBackoffDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "retry_backoff_duration_seconds",
+			Help:    "Duration of retry backoff by attempt",
+			Buckets: prometheus.ExponentialBuckets(0.01, 2, 8),
+		},
+		[]string{"operation", "attempt"},
+	)
+
+	// RetrySuccessRate процент успешных операций после retry
+	RetrySuccessRate = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "retry_success_rate",
+			Help: "Success rate of operations after retries",
+		},
+		[]string{"operation"},
+	)
+
+	// RetryCurrentAttempts текущее количество операций в retry
+	RetryCurrentAttempts = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "retry_current_attempts",
+			Help: "Current number of operations in retry state",
+		},
+		[]string{"operation"},
+	)
 )

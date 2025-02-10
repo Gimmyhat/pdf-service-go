@@ -35,7 +35,7 @@ var (
 			Help:    "Duration of DOCX generation process",
 			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 20, 30},
 		},
-		[]string{"status"},
+		[]string{"status", "python_implementation"},
 	)
 
 	docxGenerationErrors = promauto.NewCounterVec(
@@ -43,7 +43,7 @@ var (
 			Name: "docx_generation_errors_total",
 			Help: "Total number of DOCX generation errors",
 		},
-		[]string{"type"},
+		[]string{"type", "python_implementation"},
 	)
 
 	docxGenerationTotal = promauto.NewCounterVec(
@@ -51,7 +51,7 @@ var (
 			Name: "docx_generation_total",
 			Help: "Total number of DOCX generation attempts",
 		},
-		[]string{"status"},
+		[]string{"status", "python_implementation"},
 	)
 
 	docxFileSize = promauto.NewHistogramVec(
@@ -60,7 +60,7 @@ var (
 			Help:    "Size of generated DOCX files",
 			Buckets: prometheus.ExponentialBuckets(1024, 2, 10), // от 1KB до 1MB
 		},
-		[]string{"status"},
+		[]string{"status", "python_implementation"},
 	)
 )
 
@@ -179,7 +179,11 @@ func NewGenerator(scriptPath string) *Generator {
 // Generate генерирует DOCX файл из шаблона и данных
 func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, outputPath string) error {
 	start := time.Now()
-	docxGenerationTotal.WithLabelValues("started").Inc()
+	pythonImpl := "python"
+	if os.Getenv("PYTHON_IMPLEMENTATION") == "pypy3" {
+		pythonImpl = "pypy3"
+	}
+	docxGenerationTotal.WithLabelValues("started", pythonImpl).Inc()
 
 	// Пытаемся получить шаблон из кэша
 	templateName := filepath.Base(templatePath)
@@ -236,8 +240,14 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	// Оборачиваем выполнение Python-скрипта в retry механизм
 	err = g.retrier.Do(ctx, func(ctx context.Context) error {
 		return g.cb.Execute(ctx, func() error {
+			// Определяем, какую версию Python использовать
+			pythonCmd := "python"
+			if os.Getenv("PYTHON_IMPLEMENTATION") == "pypy3" {
+				pythonCmd = "pypy3"
+			}
+
 			// Устанавливаем переменную окружения для параллельной обработки
-			cmd := exec.CommandContext(ctx, "python", g.config.ScriptPath, tempPath, dataPath, outputDocx)
+			cmd := exec.CommandContext(ctx, pythonCmd, g.config.ScriptPath, tempPath, dataPath, outputDocx)
 			cmd.Env = append(os.Environ(), "DOCX_PARALLEL_PROCESSING=true")
 
 			output, err := cmd.CombinedOutput()
@@ -248,8 +258,9 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 					zap.String("template", tempPath),
 					zap.String("data", dataPath),
 					zap.String("output_docx", outputDocx),
+					zap.String("python_implementation", pythonCmd),
 				)
-				docxGenerationErrors.WithLabelValues("python_error").Inc()
+				docxGenerationErrors.WithLabelValues("python_error", pythonImpl).Inc()
 				return err
 			}
 
@@ -277,24 +288,24 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 				return err
 			}
 
+			// Обновляем метрики
+			duration := time.Since(start).Seconds()
+			docxGenerationDuration.WithLabelValues("success", pythonImpl).Observe(duration)
+			docxGenerationTotal.WithLabelValues("success", pythonImpl).Inc()
+
+			if fi, err := os.Stat(outputPath); err == nil {
+				docxFileSize.WithLabelValues("success", pythonImpl).Observe(float64(fi.Size()))
+			}
+
 			return nil
 		})
 	})
 
-	duration := time.Since(start).Seconds()
-	docxGenerationDuration.WithLabelValues(g.getStatus(err)).Observe(duration)
-
 	if err != nil {
-		docxGenerationTotal.WithLabelValues("error").Inc()
+		docxGenerationTotal.WithLabelValues("failed", pythonImpl).Inc()
 		return err
 	}
 
-	// Записываем размер сгенерированного файла
-	if fileInfo, err := os.Stat(outputPath); err == nil {
-		docxFileSize.WithLabelValues("success").Observe(float64(fileInfo.Size()))
-	}
-
-	docxGenerationTotal.WithLabelValues("success").Inc()
 	return nil
 }
 

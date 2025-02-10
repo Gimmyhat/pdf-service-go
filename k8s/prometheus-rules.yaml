@@ -220,4 +220,104 @@ spec:
       expr: sum(rate(otel_trace_span_events_total{status="error"}[5m])) / sum(rate(otel_trace_span_events_total[5m]))
 
     - record: tracing:spans:rate
-      expr: sum(rate(otel_trace_span_events_total[5m])) by (name) 
+      expr: sum(rate(otel_trace_span_events_total[5m])) by (name)
+
+  - name: pdf-service-retry-alerts
+    rules:
+      - alert: HighRetryRate
+        expr: |
+          sum(rate(retry_attempts_total{status="failed"}[5m])) by (operation)
+          / 
+          sum(rate(retry_attempts_total{status="started"}[5m])) by (operation)
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High retry rate for {{ $labels.operation }}
+          description: The retry rate for {{ $labels.operation }} is above 10% for the last 5 minutes
+
+      - alert: LowRetrySuccessRate
+        expr: |
+          retry_success_rate < 0.95
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Low retry success rate for {{ $labels.operation }}
+          description: The retry success rate for {{ $labels.operation }} is below 95% for the last 5 minutes
+
+      - alert: HighRetryLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(retry_operation_duration_seconds_bucket[5m])) by (le, operation))
+          > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High retry latency for {{ $labels.operation }}
+          description: The 95th percentile retry latency for {{ $labels.operation }} is above 1 second
+
+      - alert: RetryExhaustion
+        expr: |
+          sum(rate(retry_attempts_total{status="max_attempts"}[5m])) by (operation) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Retry exhaustion for {{ $labels.operation }}
+          description: Operations are hitting maximum retry attempts for {{ $labels.operation }}
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(retry_errors_total[5m])) by (operation, error_type)
+          / 
+          sum(rate(retry_attempts_total{status="started"}[5m])) by (operation)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High error rate for {{ $labels.operation }} ({{ $labels.error_type }})
+          description: The error rate for {{ $labels.operation }} of type {{ $labels.error_type }} is above 5%
+
+      - alert: RetryBackoffDelay
+        expr: |
+          histogram_quantile(0.95, sum(rate(retry_backoff_duration_seconds_bucket[5m])) by (le, operation))
+          > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High retry backoff delay for {{ $labels.operation }}
+          description: The 95th percentile retry backoff delay for {{ $labels.operation }} is above 2 seconds
+
+      - alert: ConcurrentRetries
+        expr: |
+          retry_current_attempts > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High number of concurrent retries for {{ $labels.operation }}
+          description: The number of concurrent retry operations for {{ $labels.operation }} is above 10
+
+  - name: pdf-service.recording
+    rules:
+    - record: pdf_service:request_rate:5m
+      expr: sum(rate(pdf_requests_total[5m])) by (status)
+    
+    - record: pdf_service:error_rate:5m
+      expr: sum(rate(pdf_requests_total{status="error"}[5m])) / sum(rate(pdf_requests_total[5m])) * 100
+
+    - record: pdf_service:generation_duration:p95
+      expr: histogram_quantile(0.95, sum(rate(pdf_generation_duration_seconds_bucket[5m])) by (le))
+
+    - record: pdf_service:generation_duration:p50
+      expr: histogram_quantile(0.50, sum(rate(pdf_generation_duration_seconds_bucket[5m])) by (le))
+
+    - record: pdf_service:retry_success_rate
+      expr: sum(rate(retry_attempts_total{status="success"}[5m])) by (operation) / sum(rate(retry_attempts_total[5m])) by (operation) * 100
+
+    - record: pdf_service:circuit_breaker_failure_rate:5m
+      expr: sum(rate(circuit_breaker_failures_total[5m])) by (name) 

@@ -125,6 +125,7 @@ func (s *Server) SetupRoutes() {
 			zap.String("test_field", "test_value"),
 			zap.Int("error_code", 500),
 		)
+		c.Header("Content-Type", "application/json; charset=utf-8")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Test error message",
 		})
@@ -137,6 +138,7 @@ func (s *Server) SetupRoutes() {
 			pdfContent, err := s.Handlers.PDF.GenerateDocx(c)
 			if err != nil {
 				logger.Error("Failed to generate PDF", zap.Error(err))
+				c.Header("Content-Type", "application/json; charset=utf-8")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
@@ -151,6 +153,7 @@ func (s *Server) SetupRoutes() {
 		pdfContent, err := s.Handlers.PDF.GenerateDocx(c)
 		if err != nil {
 			logger.Error("Failed to generate PDF", zap.Error(err))
+			c.Header("Content-Type", "application/json; charset=utf-8")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -253,6 +256,7 @@ func (s *Server) handleHealth() gin.HandlerFunc {
 			},
 		}
 
+		c.Header("Content-Type", "application/json; charset=utf-8")
 		if !isHealthy {
 			c.JSON(http.StatusServiceUnavailable, response)
 			return

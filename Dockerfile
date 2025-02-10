@@ -9,40 +9,43 @@ COPY . .
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -o main cmd/api/main.go
 
-FROM python:3.9-alpine
+FROM pypy:3.9-slim
 
 WORKDIR /app
 
 # Устанавливаем системные зависимости
-RUN apk add --no-cache \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     gcc \
-    musl-dev \
     python3-dev \
     libxml2-dev \
     libxslt-dev \
-    jpeg-dev \
-    zlib-dev \
-    freetype-dev \
-    lcms2-dev \
-    openjpeg-dev \
-    tiff-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    libfreetype-dev \
+    liblcms2-dev \
+    libopenjp2-7-dev \
+    libtiff-dev \
     tk-dev \
     tcl-dev \
-    harfbuzz-dev \
-    fribidi-dev
+    libharfbuzz-dev \
+    libfribidi-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Копируем requirements.txt и устанавливаем зависимости Python
-COPY --from=builder /app/scripts/requirements.txt ./scripts/
-RUN pip install --no-cache-dir -r scripts/requirements.txt
+# Копируем requirements-pypy.txt и устанавливаем зависимости Python
+COPY --from=builder /app/requirements-pypy.txt .
+RUN pypy3 -m pip install --no-cache-dir -r requirements-pypy.txt
 
-# Копируем собранное Go приложение
+# Копируем собранное Go приложение и необходимые файлы
 COPY --from=builder /app/main .
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/internal/domain/pdf/templates ./internal/domain/pdf/templates
 
 # Настройка переменных окружения
 ENV GIN_MODE=release \
-    LOG_LEVEL=info
+    LOG_LEVEL=info \
+    PYTHON_IMPLEMENTATION=pypy3
 
 EXPOSE 8080
 

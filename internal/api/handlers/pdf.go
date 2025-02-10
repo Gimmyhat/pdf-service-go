@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/logger"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -33,25 +35,52 @@ func NewPDFHandler(service pdf.Service) *PDFHandler {
 func (h *PDFHandler) GenerateDocx(c *gin.Context) ([]byte, error) {
 	var req pdf.DocxRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Error("Failed to parse request", zap.Error(err))
-		return nil, err
+		logger.Error("Failed to parse request",
+			zap.Error(err),
+			zap.String("content_type", c.GetHeader("Content-Type")),
+		)
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		if err.Error() == "EOF" {
+			return nil, errors.New("empty request body")
+		}
+		if strings.Contains(err.Error(), "invalid character") {
+			return nil, errors.New("invalid JSON format")
+		}
+		return nil, fmt.Errorf("invalid request format: %v", err)
+	}
+
+	if err := h.validateRequest(&req); err != nil {
+		logger.Error("Request validation failed", zap.Error(err))
+		return nil, fmt.Errorf("validation error: %v", err)
 	}
 
 	return h.service.GenerateDocx(c.Request.Context(), &req)
 }
 
 func (h *PDFHandler) validateRequest(req *pdf.DocxRequest) error {
+	var errors []string
+
 	if req.ID == "" {
-		return errors.New("id is required")
+		errors = append(errors, "id is required")
 	}
 	if req.ApplicantType == "" {
-		return errors.New("applicant type is required")
+		errors = append(errors, "applicant type is required")
 	}
 	if req.ApplicantType == "ORGANIZATION" && req.OrganizationInfo == nil {
-		return errors.New("organization info is required for organization applicant")
+		errors = append(errors, "organization info is required for organization applicant")
 	}
 	if req.ApplicantType == "INDIVIDUAL" && req.IndividualInfo == nil {
-		return errors.New("individual info is required for individual applicant")
+		errors = append(errors, "individual info is required for individual applicant")
+	}
+	if len(req.RegistryItems) == 0 {
+		errors = append(errors, "at least one registry item is required")
+	}
+	if req.PurposeOfGeoInfoAccess == "" {
+		errors = append(errors, "purpose of geo info access is required")
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("validation failed: %s", strings.Join(errors, "; "))
 	}
 	return nil
 }

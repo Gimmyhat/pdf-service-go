@@ -104,8 +104,8 @@ class LoadTester:
 
 def main():
     parser = argparse.ArgumentParser(description='Load testing tool for PDF Service')
-    parser.add_argument('--url', default='http://172.27.239.15:31005/api/v1/docx',
-                      help='Target URL (default: http://172.27.239.15:31005/api/v1/docx)')
+    parser.add_argument('--url', default='http://172.27.239.31:31005/generate-pdf',
+                      help='Target URL (default: http://172.27.239.31:31005/generate-pdf)')
     parser.add_argument('--concurrency', type=int, default=10,
                       help='Number of concurrent requests (default: 10)')
     parser.add_argument('--requests', type=int, default=100,

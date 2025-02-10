@@ -3,19 +3,9 @@ kind: ConfigMap
 metadata:
   name: nas-grafana-dashboards
   namespace: print-serv
+  labels:
+    grafana_dashboard: "true"
 data:
-  dashboard.yaml: |-
-    apiVersion: 1
-    providers:
-    - name: 'NAS PDF Service'
-      orgId: 1
-      folder: ''
-      type: file
-      disableDeletion: false
-      editable: true
-      allowUiUpdates: true
-      options:
-        path: /etc/grafana/provisioning/dashboards
   pdf-service-dashboard.json: |
     {
       "annotations": {
@@ -45,9 +35,8 @@ data:
                   }
                 ]
               },
-              "unit": "none"
-            },
-            "overrides": []
+              "unit": "reqps"
+            }
           },
           "gridPos": {
             "h": 8,
@@ -55,7 +44,6 @@ data:
             "x": 0,
             "y": 0
           },
-          "id": 1,
           "options": {
             "colorMode": "value",
             "graphMode": "area",
@@ -67,24 +55,19 @@ data:
               ],
               "fields": "",
               "values": false
-            },
-            "textMode": "auto"
+            }
           },
-          "pluginVersion": "10.0.3",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "editorMode": "code",
-              "expr": "sum(pdf_requests_total{status=\"total\"})",
-              "instant": true,
-              "range": false,
+              "expr": "sum(rate(pdf_requests_total{status=\"completed\"}[5m]))",
               "refId": "A"
             }
           ],
-          "title": "Total Requests",
+          "title": "Request Rate (successful)",
           "type": "stat"
         },
         {
@@ -99,14 +82,17 @@ data:
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "red",
+                    "color": "green",
                     "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
                   }
                 ]
               },
-              "unit": "none"
-            },
-            "overrides": []
+              "unit": "percent"
+            }
           },
           "gridPos": {
             "h": 8,
@@ -114,11 +100,7 @@ data:
             "x": 12,
             "y": 0
           },
-          "id": 2,
           "options": {
-            "colorMode": "value",
-            "graphMode": "area",
-            "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
@@ -127,24 +109,21 @@ data:
               "fields": "",
               "values": false
             },
-            "textMode": "auto"
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
           },
-          "pluginVersion": "10.0.3",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "editorMode": "code",
-              "expr": "sum(pdf_requests_total{status=\"failed\"})",
-              "instant": true,
-              "range": false,
+              "expr": "sum(rate(pdf_requests_total{status=\"error\"}[5m])) / sum(rate(pdf_requests_total[5m])) * 100",
               "refId": "A"
             }
           ],
-          "title": "Failed Requests",
-          "type": "stat"
+          "title": "Error Rate",
+          "type": "gauge"
         },
         {
           "datasource": {
@@ -197,8 +176,7 @@ data:
                 ]
               },
               "unit": "s"
-            },
-            "overrides": []
+            }
           },
           "gridPos": {
             "h": 8,
@@ -206,7 +184,6 @@ data:
             "x": 0,
             "y": 8
           },
-          "id": 3,
           "options": {
             "legend": {
               "calcs": [],
@@ -225,11 +202,18 @@ data:
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "editorMode": "code",
-              "expr": "rate(pdf_generation_duration_seconds_sum[5m]) / rate(pdf_generation_duration_seconds_count[5m])",
-              "legendFormat": "Average",
-              "range": true,
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{method=\"POST\", path=\"/generate-pdf\"}[5m])) by (le))",
+              "legendFormat": "p95",
               "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{method=\"POST\", path=\"/generate-pdf\"}[5m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "B"
             }
           ],
           "title": "PDF Generation Duration",
@@ -243,31 +227,50 @@ data:
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "thresholds"
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
               },
               "mappings": [],
-              "max": 100,
-              "min": 0,
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
                     "color": "green",
                     "value": null
-                  },
-                  {
-                    "color": "yellow",
-                    "value": 1
-                  },
-                  {
-                    "color": "red",
-                    "value": 5
                   }
                 ]
               },
-              "unit": "percent"
-            },
-            "overrides": []
+              "unit": "bytes"
+            }
           },
           "gridPos": {
             "h": 8,
@@ -275,7 +278,119 @@ data:
             "x": 12,
             "y": 8
           },
-          "id": 4,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "histogram_quantile(0.95, sum(rate(pdf_file_size_bytes_bucket{operation=\"generate-pdf\"}[5m])) by (le))",
+              "legendFormat": "p95",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "expr": "histogram_quantile(0.50, sum(rate(pdf_file_size_bytes_bucket{operation=\"generate-pdf\"}[5m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "B"
+            }
+          ],
+          "title": "PDF File Size",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["pdf-service"],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "PDF Service Dashboard",
+      "uid": "pdf-service",
+      "version": 1,
+      "weekStart": ""
+    }
+  retry-monitoring-dashboard.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "panels": [],
+          "title": "Success Rates",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 90
+                  },
+                  {
+                    "color": "green",
+                    "value": 95
+                  }
+                ]
+              },
+              "unit": "percent"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
           "options": {
             "orientation": "auto",
             "reduceOptions": {
@@ -288,184 +403,54 @@ data:
             "showThresholdLabels": false,
             "showThresholdMarkers": true
           },
-          "pluginVersion": "10.0.3",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
                 "uid": "PBFA97CFB590B2093"
               },
-              "editorMode": "code",
-              "expr": "sum(pdf_requests_total{status=\"failed\"}) / sum(pdf_requests_total{status=\"total\"}) * 100",
-              "instant": true,
-              "range": false,
+              "expr": "retry_success_rate{operation=\"$operation\"}",
               "refId": "A"
             }
           ],
-          "title": "Error Rate",
+          "title": "Overall Success Rate",
           "type": "gauge"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              }
-            }
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 16
-          },
-          "id": 5,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
-              },
-              "editorMode": "code",
-              "expr": "rate(pdf_file_size_bytes_sum[5m])",
-              "legendFormat": "Average Size",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "PDF File Size",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              }
-            }
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 16
-          },
-          "id": 6,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
-              },
-              "editorMode": "code",
-              "expr": "rate(gotenberg_request_duration_seconds_sum[5m]) / rate(gotenberg_request_duration_seconds_count[5m])",
-              "legendFormat": "Average Duration",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Gotenberg Request Duration",
-          "type": "timeseries"
         }
       ],
       "refresh": "5s",
       "schemaVersion": 38,
       "style": "dark",
-      "tags": [],
+      "tags": ["retry", "monitoring"],
       "templating": {
-        "list": []
+        "list": [
+          {
+            "current": {
+              "selected": false,
+              "text": "All",
+              "value": "$__all"
+            },
+            "datasource": {
+              "type": "prometheus",
+              "uid": "PBFA97CFB590B2093"
+            },
+            "definition": "label_values(retry_attempts_total, operation)",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Operation",
+            "multi": false,
+            "name": "operation",
+            "options": [],
+            "query": {
+              "query": "label_values(retry_attempts_total, operation)",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          }
+        ]
       },
       "time": {
         "from": "now-1h",
@@ -473,453 +458,8 @@ data:
       },
       "timepicker": {},
       "timezone": "",
-      "title": "NAS PDF Service Dashboard",
-      "uid": "nas-pdf-service",
+      "title": "Retry Monitoring",
+      "uid": "retry-monitoring",
       "version": 1,
       "weekStart": ""
-    }
-
-  tracing-overview.json: |
-    {
-      "title": "Tracing Overview",
-      "panels": [
-        {
-          "title": "Requests per Second",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-          "targets": [
-            {
-              "expr": "sum(rate(http_requests_total[5m])) by (status_code)",
-              "legendFormat": "{{status_code}}"
-            }
-          ]
-        },
-        {
-          "title": "Average Latency",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-          "targets": [
-            {
-              "expr": "rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])",
-              "legendFormat": "avg"
-            }
-          ]
-        },
-        {
-          "title": "Tracing Queue Size",
-          "type": "gauge",
-          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
-          "targets": [
-            {
-              "expr": "otel_trace_span_queue_size",
-              "legendFormat": "queue size"
-            }
-          ],
-          "options": {
-            "maxValue": 2048,
-            "thresholds": {
-              "steps": [
-                { "value": null, "color": "green" },
-                { "value": 1024, "color": "yellow" },
-                { "value": 1800, "color": "red" }
-              ]
-            }
-          }
-        },
-        {
-          "title": "Dropped Spans",
-          "type": "stat",
-          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
-          "targets": [
-            {
-              "expr": "sum(increase(otel_trace_span_drops_total[5m]))",
-              "legendFormat": "dropped"
-            }
-          ]
-        },
-        {
-          "title": "Export Latency",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.95, sum(rate(otel_trace_export_duration_seconds_bucket[5m])) by (le))",
-              "legendFormat": "p95"
-            }
-          ]
-        }
-      ]
-    }
-
-  tracing-details.json: |
-    {
-      "title": "Tracing Details",
-      "panels": [
-        {
-          "title": "Span Duration by Operation",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.95, sum(rate(otel_trace_span_duration_milliseconds_bucket[5m])) by (le, name))",
-              "legendFormat": "{{name}} p95"
-            }
-          ]
-        },
-        {
-          "title": "Error Rate by Operation",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-          "targets": [
-            {
-              "expr": "sum(rate(otel_trace_span_events_total{status=\"error\"}[5m])) by (name) / sum(rate(otel_trace_span_events_total[5m])) by (name)",
-              "legendFormat": "{{name}}"
-            }
-          ]
-        },
-        {
-          "title": "Top Slow Operations",
-          "type": "table",
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
-          "targets": [
-            {
-              "expr": "topk(10, histogram_quantile(0.95, sum(rate(otel_trace_span_duration_milliseconds_bucket[5m])) by (le, name)))",
-              "instant": true,
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "type": "sortBy",
-              "options": {
-                "fields": [
-                  {
-                    "field": "Value",
-                    "order": "desc"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    }
-
-  tracing-errors.json: |
-    {
-      "title": "Tracing Errors",
-      "panels": [
-        {
-          "title": "Error Rate",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-          "targets": [
-            {
-              "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
-              "legendFormat": "error rate"
-            }
-          ]
-        },
-        {
-          "title": "Errors by Type",
-          "type": "piechart",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-          "targets": [
-            {
-              "expr": "sum(increase(otel_trace_span_events_total{status=\"error\"}[5m])) by (error_type)",
-              "legendFormat": "{{error_type}}"
-            }
-          ]
-        },
-        {
-          "title": "Recent Errors",
-          "type": "table",
-          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
-          "targets": [
-            {
-              "expr": "otel_trace_span_events_total{status=\"error\"}",
-              "instant": true,
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "type": "sortBy",
-              "options": {
-                "fields": [
-                  {
-                    "field": "Time",
-                    "order": "desc"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    }
-
-  tracing-resources.json: |
-    {
-      "title": "Tracing Resources",
-      "panels": [
-        {
-          "title": "Memory Usage",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-          "targets": [
-            {
-              "expr": "process_resident_memory_bytes{job=\"nas-jaeger\"}",
-              "legendFormat": "memory"
-            }
-          ]
-        },
-        {
-          "title": "CPU Usage",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-          "targets": [
-            {
-              "expr": "rate(process_cpu_seconds_total{job=\"nas-jaeger\"}[5m])",
-              "legendFormat": "cpu"
-            }
-          ]
-        },
-        {
-          "title": "Storage Usage",
-          "type": "gauge",
-          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
-          "targets": [
-            {
-              "expr": "jaeger_storage_size_bytes / jaeger_storage_capacity_bytes",
-              "legendFormat": "usage"
-            }
-          ],
-          "options": {
-            "maxValue": 1,
-            "thresholds": {
-              "steps": [
-                { "value": null, "color": "green" },
-                { "value": 0.7, "color": "yellow" },
-                { "value": 0.9, "color": "red" }
-              ]
-            }
-          }
-        },
-        {
-          "title": "Goroutines",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
-          "targets": [
-            {
-              "expr": "go_goroutines{job=\"nas-jaeger\"}",
-              "legendFormat": "goroutines"
-            }
-          ]
-        },
-        {
-          "title": "GC Duration",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
-          "targets": [
-            {
-              "expr": "rate(go_gc_duration_seconds_sum{job=\"nas-jaeger\"}[5m]) / rate(go_gc_duration_seconds_count{job=\"nas-jaeger\"}[5m])",
-              "legendFormat": "gc time"
-            }
-          ]
-        }
-      ]
-    }
-
-  business-metrics.json: |-
-    {
-      "title": "PDF Service Business Metrics",
-      "uid": "pdf-business-metrics",
-      "tags": ["business", "pdf-service"],
-      "timezone": "browser",
-      "refresh": "10s",
-      "time": {
-        "from": "now-24h",
-        "to": "now"
-      },
-      "templating": {
-        "list": [
-          {
-            "name": "pod",
-            "type": "query",
-            "datasource": "Prometheus",
-            "query": "label_values(pdf_generation_total, pod)",
-            "refresh": 2,
-            "includeAll": true
-          },
-          {
-            "name": "status",
-            "type": "custom",
-            "query": "success,error",
-            "current": {
-              "selected": true,
-              "text": "All",
-              "value": "$__all"
-            },
-            "includeAll": true
-          }
-        ]
-      },
-      "panels": [
-        {
-          "title": "PDF Generation Success Rate",
-          "type": "gauge",
-          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
-          "options": {
-            "reduceOptions": {
-              "values": false,
-              "calcs": ["lastNotNull"],
-              "fields": ""
-            },
-            "orientation": "auto",
-            "showThresholdLabels": false,
-            "showThresholdMarkers": true,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                { "color": "red", "value": null },
-                { "color": "orange", "value": 90 },
-                { "color": "green", "value": 95 }
-              ]
-            }
-          },
-          "targets": [
-            {
-              "expr": "(sum(increase(pdf_generation_total{status=\"success\"}[5m])) / sum(increase(pdf_generation_total[5m]))) * 100",
-              "instant": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "min": 0,
-              "max": 100,
-              "unit": "percent"
-            }
-          }
-        },
-        {
-          "title": "PDF Generation Throughput",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 18, "x": 6, "y": 0},
-          "targets": [
-            {
-              "expr": "sum(rate(pdf_generation_total{status=~\"$status\", pod=~\"$pod\"}[5m])) by (status)",
-              "legendFormat": "{{status}}"
-            }
-          ],
-          "options": {
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          }
-        },
-        {
-          "title": "Average File Size by Template",
-          "type": "timeseries",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-          "targets": [
-            {
-              "expr": "avg(pdf_file_size_bytes) by (template)",
-              "legendFormat": "{{template}}"
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes"
-            }
-          }
-        },
-        {
-          "title": "Processing Time Distribution",
-          "type": "heatmap",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-          "options": {
-            "calculate": true,
-            "calculation": {
-              "xBuckets": {
-                "mode": "size",
-                "value": "1m"
-              }
-            }
-          },
-          "targets": [
-            {
-              "expr": "sum(increase(pdf_generation_duration_seconds_bucket[1m])) by (le)",
-              "format": "heatmap",
-              "legendFormat": "{{le}}"
-            }
-          ]
-        },
-        {
-          "title": "Top 5 Slowest Templates",
-          "type": "table",
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
-          "options": {
-            "showHeader": true,
-            "sortBy": [
-              {
-                "displayName": "Average Duration",
-                "desc": true
-              }
-            ]
-          },
-          "targets": [
-            {
-              "expr": "topk(5, avg(pdf_generation_duration_seconds) by (template))",
-              "instant": true,
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "type": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true
-                },
-                "renameByName": {
-                  "template": "Template",
-                  "Value": "Average Duration (s)"
-                }
-              }
-            }
-          ]
-        },
-        {
-          "title": "Error Distribution by Type",
-          "type": "piechart",
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "right",
-              "values": ["value", "percent"]
-            }
-          },
-          "targets": [
-            {
-              "expr": "sum(increase(pdf_generation_errors_total[24h])) by (error_type)",
-              "legendFormat": "{{error_type}}"
-            }
-          ]
-        }
-      ],
-      "annotations": {
-        "list": [
-          {
-            "name": "Deployments",
-            "datasource": "Prometheus",
-            "expr": "changes(kube_deployment_status_observed_generation{deployment=~\"nas-pdf-service\"}[5m])",
-            "tagKeys": ["deployment"],
-            "titleFormat": "Deployment",
-            "textFormat": "Deployment of {{deployment}}"
-          }
-        ]
-      }
     } 

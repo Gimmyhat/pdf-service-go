@@ -1,4 +1,4 @@
-.PHONY: build deploy-test deploy-prod deploy-all update-template-test update-template-prod help build-local deploy-grafana deploy-prometheus deploy-jaeger deploy-monitoring
+.PHONY: build deploy-test deploy-prod deploy-all update-template-test update-template-prod help build-local deploy-grafana deploy-prometheus deploy-jaeger deploy-monitoring setup-pypy test-pypy benchmark
 
 # Автоматическая генерация версии в формате YYMMDD.HHMM
 NEW_VERSION := $(shell powershell -Command "Get-Date -Format 'yy.MM.dd.HHmm'")
@@ -8,8 +8,8 @@ IMAGE_NAME = gimmyhat/pdf-service-go
 # Пути к конфигам (измените на свои)
 TEST_KUBECONFIG = $(HOME)/.kube/config
 PROD_KUBECONFIG = $(HOME)/.kube/config_prod
-TEST_CONTEXT = efgi-irk-test
-PROD_CONTEXT = efgi-irk-prod
+TEST_CONTEXT = efgi-test
+PROD_CONTEXT = efgi-prod
 
 # Переменные окружения
 ENV ?= test
@@ -68,6 +68,7 @@ deploy-grafana: check-image
 	kubectl apply -f k8s/grafana-deployment.yaml
 	kubectl apply -f k8s/grafana-datasources.yaml
 	kubectl apply -f k8s/grafana-dashboards.yaml
+	kubectl apply -f k8s/grafana-dashboard-provider.yaml
 	kubectl rollout restart deployment/nas-grafana -n print-serv
 	kubectl rollout status deployment/nas-grafana -n print-serv
 
@@ -116,23 +117,32 @@ deploy: check-image check-cluster-connection check-env
 	@powershell -Command "(Get-Content k8s/nas-pdf-service-deployment.yaml) -replace '$(IMAGE_NAME):.*', '$(IMAGE_NAME):$(VERSION)'" | kubectl apply -f -
 	$(call retry_kubectl,kubectl apply -f k8s/hpa.yaml)
 	$(call retry_kubectl,kubectl rollout status deployment/nas-pdf-service -n print-serv)
+	@echo "Deploying ingress..."
+	$(call retry_kubectl,kubectl apply -f k8s/nas-pdf-service-ingress.yaml)
 	@echo "Deployment to $(ENV) cluster completed successfully"
 
 # Алиасы для обратной совместимости
 deploy-test: 
+	@echo "Switching to test cluster..."
+	@powershell -Command "ktest"
 	@$(MAKE) deploy ENV=test
 
 deploy-prod: 
+	@echo "Switching to production cluster..."
+	@powershell -Command "kprod"
 	@$(MAKE) deploy ENV=prod
 
 deploy-all: check-image
 	@echo "Starting deployment of version $(VERSION) to all clusters..."
+	@echo "Switching to test cluster..."
+	@powershell -Command "ktest"
 	@$(MAKE) deploy ENV=test
 	@echo "\nTest deployment completed. Checking test cluster status..."
-	@kubectl config use-context $(TEST_CONTEXT)
 	@kubectl get pods -n print-serv -l app=nas-pdf-service
 	@echo "\nWaiting for confirmation before production deployment..."
 	@powershell -Command "$$confirmation = Read-Host 'Do you want to proceed with production deployment? (y/N)'; if ($$confirmation -ne 'y') { exit 1 }"
+	@echo "\nSwitching to production cluster..."
+	@powershell -Command "kprod"
 	@echo "\nProceeding with production deployment..."
 	@$(MAKE) deploy ENV=prod
 	@echo "\nDeployment to all clusters completed successfully!"
@@ -186,6 +196,24 @@ port-forward-jaeger:
 	@echo "Setting up port forward for Jaeger UI..."
 	kubectl port-forward -n print-serv svc/nas-jaeger 16686:16686
 
+setup-pypy:
+	@echo "Setting up PyPy..."
+	powershell -ExecutionPolicy Bypass -File scripts/setup-pypy.ps1
+
+test-pypy: setup-pypy
+	@echo "Testing document generation with PyPy..."
+	powershell -ExecutionPolicy Bypass -File scripts/generate_docx_pypy.ps1 \
+		internal/domain/pdf/templates/template.docx \
+		test-valid.json \
+		output-pypy.docx
+
+benchmark:
+	@echo "Running benchmark comparison..."
+	@echo "Testing with CPython..."
+	powershell -ExecutionPolicy Bypass -Command "Measure-Command { python scripts/generate_docx.py internal/domain/pdf/templates/template.docx test-valid.json output-python.docx }"
+	@echo "Testing with PyPy..."
+	powershell -ExecutionPolicy Bypass -Command "Measure-Command { pypy3 scripts/generate_docx.py internal/domain/pdf/templates/template.docx test-valid.json output-pypy.docx }"
+
 help:
 	@echo "Available targets:"
 	@echo "  build               - Build and push Docker image (using existing version if available)"
@@ -210,6 +238,9 @@ help:
 	@echo "  deploy-jaeger      - Deploy Jaeger separately"
 	@echo "  check-jaeger       - Check Jaeger status"
 	@echo "  port-forward-jaeger - Set up port forwarding for Jaeger UI"
+	@echo "  setup-pypy         - Set up PyPy"
+	@echo "  test-pypy          - Test document generation with PyPy"
+	@echo "  benchmark          - Run benchmark comparison"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build                    # Build with existing or auto-generated version"
