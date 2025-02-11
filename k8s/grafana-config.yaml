@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-grafana-config
+  namespace: print-serv
+data:
+  grafana.ini: |
+    [paths]
+    provisioning = /etc/grafana/provisioning
+
+    [dashboards]
+    default_home_dashboard_path = /etc/grafana/dashboards/nas-pdf-service-dashboard.json
+
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'nas-dashboards'
+        orgId: 1
+        folder: 'NAS'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: true 

@@ -1,4 +1,4 @@
-.PHONY: build deploy-test deploy-prod deploy-all update-template-test update-template-prod help build-local deploy-grafana deploy-prometheus deploy-jaeger deploy-monitoring setup-pypy test-pypy benchmark
+.PHONY: build deploy-test deploy-prod deploy-all update-template-test update-template-prod help build-local deploy-grafana deploy-prometheus deploy-jaeger deploy-monitoring setup-pypy test-pypy benchmark test
 
 # Автоматическая генерация версии в формате YYMMDD.HHMM
 NEW_VERSION := $(shell powershell -Command "Get-Date -Format 'yy.MM.dd.HHmm'")
@@ -214,6 +214,9 @@ benchmark:
 	@echo "Testing with PyPy..."
 	powershell -ExecutionPolicy Bypass -Command "Measure-Command { pypy3 scripts/generate_docx.py internal/domain/pdf/templates/template.docx test-valid.json output-pypy.docx }"
 
+test:
+	@python scripts/load_test.py -c $(or $(c),10) -r $(or $(r),100) --url $(or $(url),"http://172.27.239.31:31005/generate-pdf") --data $(or $(data),"test-request.json")
+
 help:
 	@echo "Available targets:"
 	@echo "  build               - Build and push Docker image (using existing version if available)"
@@ -241,6 +244,7 @@ help:
 	@echo "  setup-pypy         - Set up PyPy"
 	@echo "  test-pypy          - Test document generation with PyPy"
 	@echo "  benchmark          - Run benchmark comparison"
+	@echo "  test               - Run load_test.py with specified parameters"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build                    # Build with existing or auto-generated version"

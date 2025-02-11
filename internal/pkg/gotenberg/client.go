@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"pdf-service-go/internal/metrics"
+	"pdf-service-go/internal/pkg/metrics"
 )
 
 type Client struct {

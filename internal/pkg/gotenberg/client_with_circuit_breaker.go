@@ -9,14 +9,6 @@ import (
 	"pdf-service-go/internal/pkg/circuitbreaker"
 )
 
-// getEnvWithDefault возвращает значение переменной окружения или значение по умолчанию
-func getEnvWithDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 // getEnvIntWithDefault возвращает целочисленное значение переменной окружения или значение по умолчанию
 func getEnvIntWithDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
