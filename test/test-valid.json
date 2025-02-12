@@ -1,0 +1,44 @@
+{
+    "operation": "CREATE",
+    "id": "TEST-001",
+    "email": "test@example.com",
+    "phone": "+7 (999) 123-45-67",
+    "applicantType": "ORGANIZATION",
+    "organizationInfo": {
+        "name": "ООО \"Тест\"",
+        "address": "ул. Тестовая, 1",
+        "agent": "Иванов И.И.",
+        "esia": "1234567890"
+    },
+    "purposeOfGeoInfoAccess": "Тестовый доступ",
+    "purposeOfGeoInfoAccessDictionary": {
+        "code": "TEST",
+        "value": "Тестовый доступ"
+    },
+    "registryItems": [
+        {
+            "id": 1,
+            "name": "Тестовый документ",
+            "informationDate": "2024-02-20T10:00:00Z",
+            "invNumber": "INV-001",
+            "note": "Тестовая заметка"
+        }
+    ],
+    "createdBy": {
+        "userType": "EMPLOYEE",
+        "oid": "123",
+        "userName": "test_user",
+        "fullName": "Тестов Тест Тестович"
+    },
+    "verifiedBy": {
+        "userType": "EMPLOYEE",
+        "oid": "456",
+        "userName": "verify_user",
+        "fullName": "Проверов Проверка Проверович"
+    },
+    "creationDate": "2024-02-20T12:00:00Z",
+    "geoInfoStorageOrganization": {
+        "code": "ORG1",
+        "value": "Тестовая организация"
+    }
+} 
