@@ -1,4 +1,4 @@
-.PHONY: build deploy-test deploy-prod deploy-all update-template-test update-template-prod help build-local deploy-grafana deploy-prometheus deploy-jaeger deploy-monitoring setup-pypy test-pypy benchmark test
+.PHONY: build deploy-test deploy-prod deploy-all update-template-test update-template-prod help build-local deploy-grafana deploy-prometheus deploy-jaeger deploy-monitoring setup-pypy test-pypy benchmark test profile profile-cpu profile-memory profile-load profile-trace
 
 # Автоматическая генерация версии в формате YYMMDD.HHMM
 NEW_VERSION := $(shell powershell -Command "Get-Date -Format 'yy.MM.dd.HHmm'")
@@ -217,6 +217,63 @@ benchmark:
 test:
 	@python scripts/load_test.py -c $(or $(c),10) -r $(or $(r),100) --url $(or $(url),"http://172.27.239.31:31005/generate-pdf") --data $(or $(data),"test-request.json")
 
+# Профилирование и тестирование производительности
+
+# Базовые параметры профилирования
+PROFILE_DURATION ?= 30
+PROFILE_PORT ?= 6060
+SERVER_PORT ?= 8080
+PROFILE_OUTPUT_DIR = profiles
+LOAD_TEST_CONCURRENCY ?= 10
+LOAD_TEST_REQUESTS ?= 100
+
+profile-prepare:
+	@powershell -Command "if (-not (Test-Path $(PROFILE_OUTPUT_DIR))) { New-Item -ItemType Directory -Path $(PROFILE_OUTPUT_DIR) }"
+	@echo "Preparing for profiling..."
+	@go build -o pdf-service.exe -gcflags="-N -l" cmd/api/main.go
+
+profile-start-server:
+	@echo "Starting server..."
+	@powershell -ExecutionPolicy Bypass -File scripts/start-server.ps1 -PprofPort $(PROFILE_PORT) -ServerPort $(SERVER_PORT)
+	@echo "Waiting for server to start..."
+	@powershell -Command "Start-Sleep -Seconds 5"
+
+profile-stop-server:
+	@echo "Stopping server..."
+	@powershell -Command "Get-Process pdf-service -ErrorAction SilentlyContinue | Stop-Process -Force"
+
+profile-cpu: profile-prepare profile-start-server
+	@echo "Running CPU profiling for $(PROFILE_DURATION) seconds..."
+	@powershell -Command "try { $$response = Invoke-WebRequest -Uri 'http://localhost:$(PROFILE_PORT)/debug/pprof/profile?seconds=$(PROFILE_DURATION)' -OutFile '$(PROFILE_OUTPUT_DIR)/cpu.prof'; if ($$response.StatusCode -eq 200) { go tool pprof -text $(PROFILE_OUTPUT_DIR)/cpu.prof > $(PROFILE_OUTPUT_DIR)/cpu.txt; go tool pprof -png $(PROFILE_OUTPUT_DIR)/cpu.prof > $(PROFILE_OUTPUT_DIR)/cpu.png } } catch { Write-Error $$_.Exception.Message }"
+	@echo "CPU profile saved to $(PROFILE_OUTPUT_DIR)/cpu.txt and cpu.png"
+	@$(MAKE) profile-stop-server
+
+profile-memory: profile-prepare profile-start-server
+	@echo "Running memory profiling..."
+	@powershell -Command "try { $$response = Invoke-WebRequest -Uri 'http://localhost:$(PROFILE_PORT)/debug/pprof/heap' -OutFile '$(PROFILE_OUTPUT_DIR)/heap.prof'; if ($$response.StatusCode -eq 200) { go tool pprof -alloc_space -text $(PROFILE_OUTPUT_DIR)/heap.prof > $(PROFILE_OUTPUT_DIR)/heap_alloc.txt; go tool pprof -inuse_space -text $(PROFILE_OUTPUT_DIR)/heap.prof > $(PROFILE_OUTPUT_DIR)/heap_inuse.txt } } catch { Write-Error $$_.Exception.Message }"
+	@echo "Memory profiles saved to $(PROFILE_OUTPUT_DIR)/heap_*.txt"
+	@$(MAKE) profile-stop-server
+
+profile-trace: profile-prepare profile-start-server
+	@echo "Running trace profiling for $(PROFILE_DURATION) seconds..."
+	@powershell -Command "try { $$response = Invoke-WebRequest -Uri 'http://localhost:$(PROFILE_PORT)/debug/pprof/trace?seconds=$(PROFILE_DURATION)' -OutFile '$(PROFILE_OUTPUT_DIR)/trace.out'; go tool trace $(PROFILE_OUTPUT_DIR)/trace.out > $(PROFILE_OUTPUT_DIR)/trace_analysis.txt } catch { Write-Host $$_.Exception.Message }"
+	@echo "Trace saved to $(PROFILE_OUTPUT_DIR)/trace.out and analysis to trace_analysis.txt"
+	@$(MAKE) profile-stop-server
+
+profile-load: profile-prepare profile-start-server
+	@echo "Running load test with profiling..."
+	@python scripts/load_test.py \
+		-c $(LOAD_TEST_CONCURRENCY) \
+		-r $(LOAD_TEST_REQUESTS) \
+		--url http://localhost:$(SERVER_PORT)/api/v1/docx \
+		--data test-request.json \
+		--output $(PROFILE_OUTPUT_DIR)/load_test_results.json
+	@echo "Load test results saved to $(PROFILE_OUTPUT_DIR)/load_test_results.json"
+	@$(MAKE) profile-stop-server
+
+profile: profile-cpu profile-memory profile-trace profile-load
+	@echo "All profiling completed. Results are in $(PROFILE_OUTPUT_DIR)/"
+
 help:
 	@echo "Available targets:"
 	@echo "  build               - Build and push Docker image (using existing version if available)"
@@ -245,6 +302,7 @@ help:
 	@echo "  test-pypy          - Test document generation with PyPy"
 	@echo "  benchmark          - Run benchmark comparison"
 	@echo "  test               - Run load_test.py with specified parameters"
+	@echo "  profile            - Run all profiling tasks"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build                    # Build with existing or auto-generated version"

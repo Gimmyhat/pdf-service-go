@@ -1,0 +1,96 @@
+File: main
+Type: goroutine
+Time: Feb 12, 2025 at 1:23pm (+08)
+Showing nodes accounting for 44, 97.78% of 45 total
+      flat  flat%   sum%        cum   cum%
+        37 82.22% 82.22%         37 82.22%  runtime.gopark
+         5 11.11% 93.33%          5 11.11%  syscall.Syscall6
+         1  2.22% 95.56%          1  2.22%  runtime.goroutineProfileWithLabels
+         1  2.22% 97.78%          1  2.22%  runtime.notetsleepg
+         0     0% 97.78%          7 15.56%  bufio.(*Reader).Peek
+         0     0% 97.78%          1  2.22%  bufio.(*Reader).Read
+         0     0% 97.78%          7 15.56%  bufio.(*Reader).fill
+         0     0% 97.78%          5 11.11%  bytes.(*Buffer).ReadFrom
+         0     0% 97.78%          5 11.11%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0% 97.78%          5 11.11%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0% 97.78%          5 11.11%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0% 97.78%          5 11.11%  github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1
+         0     0% 97.78%          1  2.22%  go.opentelemetry.io/otel/sdk/trace.(*batchSpanProcessor).processQueue
+         0     0% 97.78%          1  2.22%  go.opentelemetry.io/otel/sdk/trace.NewBatchSpanProcessor.func1
+         0     0% 97.78%          1  2.22%  golang.org/x/net/http2.(*Framer).ReadFrame
+         0     0% 97.78%          1  2.22%  golang.org/x/net/http2.readFrameHeader
+         0     0% 97.78%          3  6.67%  google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run
+         0     0% 97.78%          1  2.22%  google.golang.org/grpc/internal/transport.(*controlBuffer).get
+         0     0% 97.78%          1  2.22%  google.golang.org/grpc/internal/transport.(*http2Client).reader
+         0     0% 97.78%          1  2.22%  google.golang.org/grpc/internal/transport.(*loopyWriter).run
+         0     0% 97.78%          1  2.22%  google.golang.org/grpc/internal/transport.newHTTP2Client.func6
+         0     0% 97.78%          2  4.44%  internal/poll.(*FD).Accept
+         0     0% 97.78%         18 40.00%  internal/poll.(*FD).Read
+         0     0% 97.78%         20 44.44%  internal/poll.(*pollDesc).wait
+         0     0% 97.78%         20 44.44%  internal/poll.(*pollDesc).waitRead (inline)
+         0     0% 97.78%         20 44.44%  internal/poll.runtime_pollWait
+         0     0% 97.78%          5 11.11%  io.Copy (inline)
+         0     0% 97.78%          1  2.22%  io.ReadAtLeast
+         0     0% 97.78%          1  2.22%  io.ReadFull (inline)
+         0     0% 97.78%          5 11.11%  io.copyBuffer
+         0     0% 97.78%          1  2.22%  main.main
+         0     0% 97.78%          1  2.22%  main.main.func2
+         0     0% 97.78%          2  4.44%  net.(*TCPListener).Accept
+         0     0% 97.78%          2  4.44%  net.(*TCPListener).accept
+         0     0% 97.78%         13 28.89%  net.(*conn).Read
+         0     0% 97.78%         13 28.89%  net.(*netFD).Read
+         0     0% 97.78%          2  4.44%  net.(*netFD).accept
+         0     0% 97.78%          1  2.22%  net/http.(*ServeMux).ServeHTTP
+         0     0% 97.78%          2  4.44%  net/http.(*Server).ListenAndServe
+         0     0% 97.78%          2  4.44%  net/http.(*Server).Serve
+         0     0% 97.78%          4  8.89%  net/http.(*conn).serve
+         0     0% 97.78%          3  6.67%  net/http.(*connReader).Read
+         0     0% 97.78%          5 11.11%  net/http.(*connReader).backgroundRead
+         0     0% 97.78%          4  8.89%  net/http.(*persistConn).Read
+         0     0% 97.78%          4  8.89%  net/http.(*persistConn).readLoop
+         0     0% 97.78%          4  8.89%  net/http.(*persistConn).writeLoop
+         0     0% 97.78%          6 13.33%  net/http.HandlerFunc.ServeHTTP
+         0     0% 97.78%          1  2.22%  net/http.ListenAndServe (inline)
+         0     0% 97.78%          1  2.22%  net/http.serverHandler.ServeHTTP
+         0     0% 97.78%          1  2.22%  net/http/pprof.Index
+         0     0% 97.78%          1  2.22%  net/http/pprof.handler.ServeHTTP
+         0     0% 97.78%          5 11.11%  os.(*File).Read
+         0     0% 97.78%          5 11.11%  os.(*File).read (inline)
+         0     0% 97.78%          5 11.11%  os.(*Process).Wait (inline)
+         0     0% 97.78%          5 11.11%  os.(*Process).blockUntilWaitable
+         0     0% 97.78%          5 11.11%  os.(*Process).wait
+         0     0% 97.78%          5 11.11%  os/exec.(*Cmd).CombinedOutput
+         0     0% 97.78%          5 11.11%  os/exec.(*Cmd).Run
+         0     0% 97.78%          5 11.11%  os/exec.(*Cmd).Start.func2
+         0     0% 97.78%          5 11.11%  os/exec.(*Cmd).Wait
+         0     0% 97.78%          5 11.11%  os/exec.(*Cmd).watchCtx
+         0     0% 97.78%          5 11.11%  os/exec.(*Cmd).writerDescriptor.func1
+         0     0% 97.78%          1  2.22%  os/signal.loop
+         0     0% 97.78%          1  2.22%  os/signal.signal_recv
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api.(*Server).SetupRoutes.func2
+         0     0% 97.78%          1  2.22%  pdf-service-go/internal/api.(*Server).Start
+         0     0% 97.78%          1  2.22%  pdf-service-go/internal/api.(*Server).Start.func1
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api.NewServer.GinTracingMiddleware.func5
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api.NewServer.GinTracingMiddleware.func5.1
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api.NewServer.PrometheusMiddleware.func4
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api.NewServer.func2
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api.NewServer.func3
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/api/handlers.(*PDFHandler).GenerateDocx
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/domain/pdf.(*ServiceImpl).GenerateDocx
+         0     0% 97.78%          1  2.22%  pdf-service-go/internal/pkg/cache.(*Cache).startCleanupTimer
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/pkg/circuitbreaker.(*CircuitBreaker).Execute
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate.func1
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate.func1.1
+         0     0% 97.78%          1  2.22%  pdf-service-go/internal/pkg/docxgen.(*TempManager).startCleanup
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/pkg/retry.(*Retrier).Do
+         0     0% 97.78%          5 11.11%  pdf-service-go/internal/pkg/tracing.TracingMiddleware.func1
+         0     0% 97.78%          2  4.44%  runtime.chanrecv
+         0     0% 97.78%          2  4.44%  runtime.chanrecv2
+         0     0% 97.78%          1  2.22%  runtime.main
+         0     0% 97.78%         20 44.44%  runtime.netpollblock
+         0     0% 97.78%         15 33.33%  runtime.selectgo
+         0     0% 97.78%          1  2.22%  runtime/pprof.(*Profile).WriteTo
+         0     0% 97.78%          1  2.22%  runtime/pprof.runtime_goroutineProfileWithLabels
+         0     0% 97.78%          1  2.22%  runtime/pprof.writeGoroutine
+         0     0% 97.78%          1  2.22%  runtime/pprof.writeRuntimeProfile

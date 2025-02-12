@@ -1,0 +1,35 @@
+File: main
+Type: inuse_space
+Time: Feb 12, 2025 at 1:23pm (+08)
+Showing nodes accounting for 2221.74kB, 100% of 2221.74kB total
+      flat  flat%   sum%        cum   cum%
+ 1184.27kB 53.30% 53.30%  1184.27kB 53.30%  runtime/pprof.StartCPUProfile
+  525.43kB 23.65% 76.95%   525.43kB 23.65%  os.ReadFile
+  512.04kB 23.05%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus.(*histogram).Write
+         0     0%   100%  1037.47kB 46.70%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0%   100%  1037.47kB 46.70%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100%  1037.47kB 46.70%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%  1037.47kB 46.70%  github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1
+         0     0%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus.(*Registry).Gather
+         0     0%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus.(*noTransactionGatherer).Gather
+         0     0%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus.processMetric
+         0     0%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus/promhttp.HandlerForTransactional.func1
+         0     0%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus/promhttp.InstrumentHandlerCounter.func1
+         0     0%   100%   512.04kB 23.05%  github.com/prometheus/client_golang/prometheus/promhttp.InstrumentMetricHandler.InstrumentHandlerInFlight.func1
+         0     0%   100%   525.43kB 23.65%  io/ioutil.ReadFile (inline)
+         0     0%   100%  1184.27kB 53.30%  net/http.(*ServeMux).ServeHTTP
+         0     0%   100%  2221.74kB   100%  net/http.(*conn).serve
+         0     0%   100%  2221.74kB   100%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%  2221.74kB   100%  net/http.serverHandler.ServeHTTP
+         0     0%   100%  1184.27kB 53.30%  net/http/pprof.Profile
+         0     0%   100%   512.04kB 23.05%  pdf-service-go/internal/api.(*Server).SetupRoutes.WrapH.func5
+         0     0%   100%   525.43kB 23.65%  pdf-service-go/internal/api.(*Server).SetupRoutes.func2
+         0     0%   100%  1037.47kB 46.70%  pdf-service-go/internal/api.NewServer.GinTracingMiddleware.func5
+         0     0%   100%  1037.47kB 46.70%  pdf-service-go/internal/api.NewServer.GinTracingMiddleware.func5.1
+         0     0%   100%  1037.47kB 46.70%  pdf-service-go/internal/api.NewServer.PrometheusMiddleware.func4
+         0     0%   100%  1037.47kB 46.70%  pdf-service-go/internal/api.NewServer.func2
+         0     0%   100%  1037.47kB 46.70%  pdf-service-go/internal/api.NewServer.func3
+         0     0%   100%   525.43kB 23.65%  pdf-service-go/internal/api/handlers.(*PDFHandler).GenerateDocx
+         0     0%   100%   525.43kB 23.65%  pdf-service-go/internal/domain/pdf.(*ServiceImpl).GenerateDocx
+         0     0%   100%   525.43kB 23.65%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate
+         0     0%   100%  1037.47kB 46.70%  pdf-service-go/internal/pkg/tracing.TracingMiddleware.func1

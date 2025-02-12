@@ -67,14 +67,5 @@ func (h *Handlers) GenerateDocx(c *gin.Context) {
 		return
 	}
 
-	pdfContent, err := h.PDF.GenerateDocx(c)
-	if err != nil {
-		logger.Error("Failed to generate PDF", zap.Error(err))
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Disposition", "attachment; filename=result.pdf")
-	c.Data(200, "application/pdf", pdfContent)
+	h.PDF.GenerateDocx(c)
 }

@@ -8,7 +8,9 @@ import (
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/logger"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -32,7 +34,9 @@ func NewPDFHandler(service pdf.Service) *PDFHandler {
 
 // ... existing code ...
 
-func (h *PDFHandler) GenerateDocx(c *gin.Context) ([]byte, error) {
+func (h *PDFHandler) GenerateDocx(c *gin.Context) {
+	startTime := time.Now()
+
 	var req pdf.DocxRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Failed to parse request",
@@ -41,20 +45,42 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) ([]byte, error) {
 		)
 		c.Header("Content-Type", "application/json; charset=utf-8")
 		if err.Error() == "EOF" {
-			return nil, errors.New("empty request body")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "empty request body"})
+			return
 		}
 		if strings.Contains(err.Error(), "invalid character") {
-			return nil, errors.New("invalid JSON format")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON format"})
+			return
 		}
-		return nil, fmt.Errorf("invalid request format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid request format: %v", err)})
+		return
 	}
 
 	if err := h.validateRequest(&req); err != nil {
 		logger.Error("Request validation failed", zap.Error(err))
-		return nil, fmt.Errorf("validation error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("validation error: %v", err)})
+		return
 	}
 
-	return h.service.GenerateDocx(c.Request.Context(), &req)
+	// Время начала генерации DOCX
+	docxStartTime := time.Now()
+	pdfContent, err := h.service.GenerateDocx(c.Request.Context(), &req)
+	docxDuration := time.Since(docxStartTime)
+
+	if err != nil {
+		logger.Error("Failed to generate PDF", zap.Error(err))
+		c.JSON(h.determineErrorStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+
+	totalDuration := time.Since(startTime)
+
+	// Добавляем заголовки с метриками времени
+	c.Header("X-Docx-Generation-Time", strconv.FormatFloat(docxDuration.Seconds(), 'f', 3, 64))
+	c.Header("X-PDF-Conversion-Time", strconv.FormatFloat(totalDuration.Seconds()-docxDuration.Seconds(), 'f', 3, 64))
+	c.Header("X-Total-Processing-Time", strconv.FormatFloat(totalDuration.Seconds(), 'f', 3, 64))
+
+	c.Data(http.StatusOK, "application/pdf", pdfContent)
 }
 
 func (h *PDFHandler) validateRequest(req *pdf.DocxRequest) error {

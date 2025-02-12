@@ -36,11 +36,21 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	)
 
 	start := time.Now()
+	var docxGenerationTime time.Duration
+	var pdfConversionTime time.Duration
+
+	// Сохраняем метрики в контекст
+	ctx = context.WithValue(ctx, "start_time", start)
+	ctx = context.WithValue(ctx, "docx_generation_time", &docxGenerationTime)
+	ctx = context.WithValue(ctx, "pdf_conversion_time", &pdfConversionTime)
+
 	defer func() {
-		duration := time.Since(start).Seconds()
-		metrics.HTTPRequestDuration.WithLabelValues("POST", "/generate-pdf").Observe(duration)
+		duration := time.Since(start)
+		metrics.HTTPRequestDuration.WithLabelValues("POST", "/generate-pdf").Observe(duration.Seconds())
 		log.Info("PDF generation completed",
-			zap.Float64("duration_seconds", duration),
+			zap.Float64("duration_seconds", duration.Seconds()),
+			zap.Float64("docx_generation_seconds", docxGenerationTime.Seconds()),
+			zap.Float64("pdf_conversion_seconds", pdfConversionTime.Seconds()),
 		)
 	}()
 
@@ -91,16 +101,20 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 
 	// Генерируем DOCX
 	log.Info("Starting DOCX generation")
+	docxStart := time.Now()
 	if err := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
 		log.Error("Failed to generate DOCX", zap.Error(err))
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
 	}
+	docxGenerationTime = time.Since(docxStart)
 
 	// Конвертируем DOCX в PDF через Gotenberg
 	log.Info("Starting PDF conversion with Gotenberg")
-	gotenbergStart := time.Now()
+	pdfStart := time.Now()
 	pdfContent, err := s.gotenbergClient.ConvertDocxToPDF(docxFile.Name())
+	pdfConversionTime = time.Since(pdfStart)
+
 	if err != nil {
 		log.Error("Failed to convert to PDF", zap.Error(err))
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
@@ -109,12 +123,12 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	}
 
 	// После получения ответа от Gotenberg
-	gotenbergDuration := time.Since(gotenbergStart).Seconds()
-	metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(gotenbergDuration)
+	metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(pdfConversionTime.Seconds())
 	metrics.GotenbergRequestsTotal.WithLabelValues("success").Inc()
 
 	log.Info("PDF conversion completed",
-		zap.Float64("gotenberg_duration_seconds", gotenbergDuration),
+		zap.Float64("docx_generation_seconds", docxGenerationTime.Seconds()),
+		zap.Float64("pdf_conversion_seconds", pdfConversionTime.Seconds()),
 		zap.Float64("pdf_size_mb", float64(len(pdfContent))/1024/1024),
 	)
 

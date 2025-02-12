@@ -1,0 +1,204 @@
+File: main
+Type: alloc_space
+Time: Feb 12, 2025 at 1:23pm (+08)
+Showing nodes accounting for 96.49MB, 100% of 96.49MB total
+      flat  flat%   sum%        cum   cum%
+   37.01MB 38.36% 38.36%    38.51MB 39.91%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate.func1.1
+   13.22MB 13.70% 52.06%    15.90MB 16.48%  compress/flate.NewWriter (inline)
+   11.04MB 11.45% 63.50%    11.04MB 11.45%  bytes.growSlice
+    3.01MB  3.12% 66.63%     3.01MB  3.12%  io.ReadAll
+    2.68MB  2.77% 69.40%     2.68MB  2.77%  compress/flate.(*compressor).initDeflate (inline)
+    2.66MB  2.76% 72.16%    13.70MB 14.20%  pdf-service-go/internal/pkg/gotenberg.(*Client).ConvertDocxToPDF
+    2.55MB  2.64% 74.80%     5.63MB  5.83%  github.com/prometheus/procfs.parseStat
+    2.08MB  2.15% 76.95%     2.08MB  2.15%  strings.Fields
+    1.52MB  1.58% 78.53%     2.02MB  2.10%  github.com/prometheus/client_golang/prometheus.(*Registry).Gather
+    1.16MB  1.20% 79.73%     1.16MB  1.20%  runtime/pprof.StartCPUProfile
+       1MB  1.04% 80.77%        1MB  1.04%  go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).ensureAttributesCapacity (inline)
+       1MB  1.04% 81.80%    78.65MB 81.52%  pdf-service-go/internal/pkg/tracing.TracingMiddleware.func1
+       1MB  1.04% 82.84%        3MB  3.11%  pdf-service-go/internal/api.(*Server).SetupRoutes.(*Server).handleHealth.func4
+       1MB  1.04% 83.88%        1MB  1.04%  net/http.(*Request).WithContext (inline)
+       1MB  1.04% 84.91%        1MB  1.04%  github.com/prometheus/client_golang/prometheus.NewConstMetric
+       1MB  1.04% 85.95%        1MB  1.04%  google.golang.org/grpc/internal/transport.(*http2Client).newStream
+       1MB  1.04% 86.98%        1MB  1.04%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform.Value
+    0.53MB  0.55% 87.54%     0.53MB  0.55%  net.open
+    0.51MB  0.53% 88.07%     0.51MB  0.53%  os.ReadFile
+    0.50MB  0.52% 88.59%     0.50MB  0.52%  os.glob..func1
+    0.50MB  0.52% 89.11%     0.50MB  0.52%  bufio.(*Scanner).Text (inline)
+    0.50MB  0.52% 89.63%     0.50MB  0.52%  google.golang.org/protobuf/reflect/protoregistry.(*Files).RegisterFile.func2
+    0.50MB  0.52% 90.15%     0.50MB  0.52%  bufio.NewWriterSize (inline)
+    0.50MB  0.52% 90.67%     0.50MB  0.52%  syscall.Environ
+    0.50MB  0.52% 91.19%     0.50MB  0.52%  go.uber.org/zap/internal/stacktrace.glob..func1
+    0.50MB  0.52% 91.71%     0.50MB  0.52%  go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).snapshot
+    0.50MB  0.52% 92.23%    79.15MB 82.03%  pdf-service-go/internal/api.NewServer.func2
+    0.50MB  0.52% 92.74%     0.50MB  0.52%  net/http.Header.Clone (inline)
+    0.50MB  0.52% 93.26%     0.50MB  0.52%  net/textproto.MIMEHeader.Set (inline)
+    0.50MB  0.52% 93.78%        1MB  1.04%  encoding/json.mapEncoder.encode
+    0.50MB  0.52% 94.30%     0.50MB  0.52%  net/http.(*Server).newConn (inline)
+    0.50MB  0.52% 94.82%     0.50MB  0.52%  net.newFD (inline)
+    0.50MB  0.52% 95.34%        1MB  1.04%  os/exec.(*Cmd).Start
+    0.50MB  0.52% 95.85%     0.50MB  0.52%  github.com/prometheus/client_golang/prometheus.(*histogram).Write
+    0.50MB  0.52% 96.37%     0.50MB  0.52%  github.com/prometheus/procfs.parseCPUStat
+    0.50MB  0.52% 96.89%     0.50MB  0.52%  google.golang.org/grpc/internal/transport.(*http2Client).getPeer (inline)
+    0.50MB  0.52% 97.41%     0.50MB  0.52%  internal/reflectlite.Swapper
+    0.50MB  0.52% 97.93%     0.50MB  0.52%  regexp.newQueue (inline)
+    0.50MB  0.52% 98.45%     0.50MB  0.52%  regexp/syntax.(*compiler).inst (inline)
+    0.50MB  0.52% 98.96%     0.50MB  0.52%  encoding/json.(*scanner).pushParseState
+    0.50MB  0.52% 99.48%     0.50MB  0.52%  syscall.forkAndExecInChild1
+    0.50MB  0.52%   100%     0.50MB  0.52%  regexp.mergeRuneSets.func2 (inline)
+         0     0%   100%    15.90MB 16.48%  bufio.(*Writer).Flush
+         0     0%   100%     0.50MB  0.52%  bufio.NewWriter (inline)
+         0     0%   100%     8.49MB  8.79%  bytes.(*Buffer).ReadFrom
+         0     0%   100%     2.56MB  2.65%  bytes.(*Buffer).Write
+         0     0%   100%    11.04MB 11.45%  bytes.(*Buffer).grow
+         0     0%   100%     2.68MB  2.77%  compress/flate.(*compressor).init
+         0     0%   100%    15.90MB 16.48%  compress/gzip.(*Writer).Write
+         0     0%   100%     0.50MB  0.52%  encoding/json.(*Decoder).Decode
+         0     0%   100%     0.50MB  0.52%  encoding/json.(*decodeState).array
+         0     0%   100%     0.50MB  0.52%  encoding/json.(*decodeState).object
+         0     0%   100%     0.50MB  0.52%  encoding/json.(*decodeState).scanWhile
+         0     0%   100%     0.50MB  0.52%  encoding/json.(*decodeState).unmarshal
+         0     0%   100%     0.50MB  0.52%  encoding/json.(*decodeState).value
+         0     0%   100%        1MB  1.04%  encoding/json.(*encodeState).marshal
+         0     0%   100%        1MB  1.04%  encoding/json.(*encodeState).reflectValue
+         0     0%   100%        1MB  1.04%  encoding/json.Marshal
+         0     0%   100%     0.50MB  0.52%  encoding/json.interfaceEncoder
+         0     0%   100%     0.50MB  0.52%  encoding/json.stateBeginValue
+         0     0%   100%     0.50MB  0.52%  encoding/json.stateBeginValueOrEmpty
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin.(*Context).Header
+         0     0%   100%     1.50MB  1.55%  github.com/gin-gonic/gin.(*Context).JSON
+         0     0%   100%    79.15MB 82.03%  github.com/gin-gonic/gin.(*Context).Next (partial-inline)
+         0     0%   100%     1.50MB  1.55%  github.com/gin-gonic/gin.(*Context).Render
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin.(*Context).ShouldBindJSON (inline)
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin.(*Context).ShouldBindWith (inline)
+         0     0%   100%    74.98MB 77.71%  github.com/gin-gonic/gin.(*Engine).ServeHTTP
+         0     0%   100%    78.65MB 81.52%  github.com/gin-gonic/gin.(*Engine).handleHTTPRequest
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin.(*responseWriter).Write
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin.(*responseWriter).WriteHeaderNow (inline)
+         0     0%   100%    78.65MB 81.52%  github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin/binding.decodeJSON
+         0     0%   100%     0.50MB  0.52%  github.com/gin-gonic/gin/binding.jsonBinding.Bind
+         0     0%   100%     1.50MB  1.55%  github.com/gin-gonic/gin/render.JSON.Render
+         0     0%   100%     1.50MB  1.55%  github.com/gin-gonic/gin/render.WriteJSON
+         0     0%   100%        1MB  1.04%  github.com/go-playground/validator/v10.init
+         0     0%   100%     0.50MB  0.52%  github.com/go-playground/validator/v10.init.0
+         0     0%   100%    10.14MB 10.51%  github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1
+         0     0%   100%        1MB  1.04%  github.com/prometheus/client_golang/prometheus.(*goCollector).Collect
+         0     0%   100%     2.02MB  2.10%  github.com/prometheus/client_golang/prometheus.(*noTransactionGatherer).Gather
+         0     0%   100%     9.14MB  9.48%  github.com/prometheus/client_golang/prometheus.(*processCollector).Collect
+         0     0%   100%     9.14MB  9.48%  github.com/prometheus/client_golang/prometheus.(*processCollector).processCollect
+         0     0%   100%        1MB  1.04%  github.com/prometheus/client_golang/prometheus.MustNewConstMetric (inline)
+         0     0%   100%     0.50MB  0.52%  github.com/prometheus/client_golang/prometheus.processMetric
+         0     0%   100%    18.42MB 19.09%  github.com/prometheus/client_golang/prometheus/promhttp.HandlerForTransactional.func1
+         0     0%   100%    18.42MB 19.09%  github.com/prometheus/client_golang/prometheus/promhttp.InstrumentHandlerCounter.func1
+         0     0%   100%    18.42MB 19.09%  github.com/prometheus/client_golang/prometheus/promhttp.InstrumentMetricHandler.InstrumentHandlerInFlight.func1
+         0     0%   100%    16.40MB 17.00%  github.com/prometheus/common/expfmt.MetricFamilyToText
+         0     0%   100%    15.90MB 16.48%  github.com/prometheus/common/expfmt.MetricFamilyToText.func1
+         0     0%   100%    16.40MB 17.00%  github.com/prometheus/common/expfmt.NewEncoder.func7
+         0     0%   100%    16.40MB 17.00%  github.com/prometheus/common/expfmt.encoderCloser.Encode
+         0     0%   100%     0.50MB  0.52%  github.com/prometheus/common/expfmt.glob..func1
+         0     0%   100%     8.64MB  8.95%  github.com/prometheus/procfs.FS.Stat
+         0     0%   100%     0.50MB  0.52%  github.com/prometheus/procfs.Proc.FileDescriptorsLen
+         0     0%   100%     0.50MB  0.52%  github.com/prometheus/procfs.Proc.fileDescriptors
+         0     0%   100%     8.64MB  8.95%  github.com/prometheus/procfs.ProcStat.StartTime
+         0     0%   100%     3.01MB  3.12%  github.com/prometheus/procfs/internal/util.ReadFileNoStat
+         0     0%   100%     2.50MB  2.59%  go.opentelemetry.io/otel/exporters/otlp/otlptrace.(*Exporter).ExportSpans
+         0     0%   100%        1MB  1.04%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform.KeyValue (inline)
+         0     0%   100%        1MB  1.04%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform.KeyValues
+         0     0%   100%        1MB  1.04%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform.Spans
+         0     0%   100%        1MB  1.04%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform.span
+         0     0%   100%     1.50MB  1.55%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc.(*client).UploadTraces
+         0     0%   100%     1.50MB  1.55%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc.(*client).UploadTraces.func1
+         0     0%   100%     1.50MB  1.55%  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc.newClient.Config.RequestFunc.func2
+         0     0%   100%     2.50MB  2.59%  go.opentelemetry.io/otel/sdk/trace.(*batchSpanProcessor).exportSpans
+         0     0%   100%     2.50MB  2.59%  go.opentelemetry.io/otel/sdk/trace.(*batchSpanProcessor).processQueue
+         0     0%   100%     0.50MB  0.52%  go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).End
+         0     0%   100%        1MB  1.04%  go.opentelemetry.io/otel/sdk/trace.(*recordingSpan).SetAttributes
+         0     0%   100%     2.50MB  2.59%  go.opentelemetry.io/otel/sdk/trace.NewBatchSpanProcessor.func1
+         0     0%   100%     1.50MB  1.55%  go.opentelemetry.io/proto/otlp/collector/trace/v1.(*traceServiceClient).Export
+         0     0%   100%     0.50MB  0.52%  go.uber.org/zap.(*Logger).Info
+         0     0%   100%     0.50MB  0.52%  go.uber.org/zap.(*Logger).check
+         0     0%   100%     0.50MB  0.52%  go.uber.org/zap/internal/pool.(*Pool[go.shape.*uint8]).Get (inline)
+         0     0%   100%     0.50MB  0.52%  go.uber.org/zap/internal/stacktrace.Capture
+         0     0%   100%     0.50MB  0.52%  go.uber.org/zap/internal/stacktrace.init.New[go.shape.*uint8].func1
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.(*ClientConn).Invoke
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.(*clientStream).withRetry
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.(*csAttempt).newStream
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.invoke
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.newClientStream
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.newClientStream.func3
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.newClientStreamWithParams
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc.newClientStreamWithParams.func2
+         0     0%   100%     1.50MB  1.55%  google.golang.org/grpc/internal/transport.(*http2Client).NewStream
+         0     0%   100%     0.50MB  0.52%  google.golang.org/protobuf/internal/filedesc.Builder.Build
+         0     0%   100%     0.50MB  0.52%  google.golang.org/protobuf/internal/filetype.Builder.Build
+         0     0%   100%     0.50MB  0.52%  google.golang.org/protobuf/reflect/protoregistry.(*Files).RegisterFile
+         0     0%   100%     0.50MB  0.52%  google.golang.org/protobuf/reflect/protoregistry.rangeTopLevelDescriptors
+         0     0%   100%     0.50MB  0.52%  google.golang.org/protobuf/types/descriptorpb.file_google_protobuf_descriptor_proto_init
+         0     0%   100%     0.50MB  0.52%  google.golang.org/protobuf/types/descriptorpb.init.0
+         0     0%   100%     8.49MB  8.79%  io.Copy (inline)
+         0     0%   100%     2.56MB  2.65%  io.CopyBuffer
+         0     0%   100%    11.04MB 11.45%  io.copyBuffer
+         0     0%   100%     0.51MB  0.53%  io/ioutil.ReadFile (inline)
+         0     0%   100%     2.56MB  2.65%  mime/multipart.(*part).Write
+         0     0%   100%     0.53MB  0.55%  net.(*ListenConfig).Listen
+         0     0%   100%     0.50MB  0.52%  net.(*TCPListener).Accept
+         0     0%   100%     0.50MB  0.52%  net.(*TCPListener).accept
+         0     0%   100%     0.50MB  0.52%  net.(*netFD).accept
+         0     0%   100%     0.53MB  0.55%  net.(*sysListener).listenTCP (inline)
+         0     0%   100%     0.53MB  0.55%  net.(*sysListener).listenTCPProto
+         0     0%   100%     0.53MB  0.55%  net.Listen
+         0     0%   100%     0.53MB  0.55%  net.internetSocket
+         0     0%   100%     0.53MB  0.55%  net.listenerBacklog
+         0     0%   100%     0.53MB  0.55%  net.listenerBacklog.func1
+         0     0%   100%     0.53MB  0.55%  net.maxListenerBacklog
+         0     0%   100%     0.53MB  0.55%  net.socket
+         0     0%   100%     1.16MB  1.20%  net/http.(*ServeMux).ServeHTTP
+         0     0%   100%     1.53MB  1.59%  net/http.(*Server).ListenAndServe
+         0     0%   100%        1MB  1.04%  net/http.(*Server).Serve
+         0     0%   100%    62.41MB 64.68%  net/http.(*conn).serve
+         0     0%   100%     0.50MB  0.52%  net/http.(*response).WriteHeader
+         0     0%   100%    79.81MB 82.71%  net/http.HandlerFunc.ServeHTTP
+         0     0%   100%     0.50MB  0.52%  net/http.Header.Set (inline)
+         0     0%   100%    76.13MB 78.90%  net/http.serverHandler.ServeHTTP
+         0     0%   100%     1.16MB  1.20%  net/http/pprof.Profile
+         0     0%   100%     0.50MB  0.52%  os.(*File).Readdirnames
+         0     0%   100%     0.50MB  0.52%  os.(*File).readdir
+         0     0%   100%     0.50MB  0.52%  os.Environ (inline)
+         0     0%   100%     0.50MB  0.52%  os.StartProcess
+         0     0%   100%     0.50MB  0.52%  os.startProcess
+         0     0%   100%        1MB  1.04%  os/exec.(*Cmd).CombinedOutput
+         0     0%   100%        1MB  1.04%  os/exec.(*Cmd).Run
+         0     0%   100%    18.42MB 19.09%  pdf-service-go/internal/api.(*Server).SetupRoutes.WrapH.func5
+         0     0%   100%    53.73MB 55.68%  pdf-service-go/internal/api.(*Server).SetupRoutes.func2
+         0     0%   100%     1.53MB  1.59%  pdf-service-go/internal/api.(*Server).Start.func1
+         0     0%   100%    78.65MB 81.52%  pdf-service-go/internal/api.NewServer.GinTracingMiddleware.func5
+         0     0%   100%    75.65MB 78.40%  pdf-service-go/internal/api.NewServer.GinTracingMiddleware.func5.1
+         0     0%   100%    78.65MB 81.52%  pdf-service-go/internal/api.NewServer.PrometheusMiddleware.func4
+         0     0%   100%    75.65MB 78.40%  pdf-service-go/internal/api.NewServer.func3
+         0     0%   100%    53.73MB 55.68%  pdf-service-go/internal/api/handlers.(*PDFHandler).GenerateDocx
+         0     0%   100%    53.23MB 55.16%  pdf-service-go/internal/domain/pdf.(*ServiceImpl).GenerateDocx
+         0     0%   100%    52.21MB 54.11%  pdf-service-go/internal/pkg/circuitbreaker.(*CircuitBreaker).Execute
+         0     0%   100%    39.02MB 40.44%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate
+         0     0%   100%    38.51MB 39.91%  pdf-service-go/internal/pkg/docxgen.(*Generator).Generate.func1
+         0     0%   100%    13.70MB 14.20%  pdf-service-go/internal/pkg/gotenberg.(*ClientWithCircuitBreaker).ConvertDocxToPDF
+         0     0%   100%    13.70MB 14.20%  pdf-service-go/internal/pkg/gotenberg.(*ClientWithCircuitBreaker).ConvertDocxToPDF.func1
+         0     0%   100%    38.51MB 39.91%  pdf-service-go/internal/pkg/retry.(*Retrier).Do
+         0     0%   100%     1.50MB  1.55%  regexp.Compile (inline)
+         0     0%   100%     1.50MB  1.55%  regexp.MustCompile
+         0     0%   100%     1.50MB  1.55%  regexp.compile
+         0     0%   100%        1MB  1.04%  regexp.compileOnePass
+         0     0%   100%        1MB  1.04%  regexp.makeOnePass
+         0     0%   100%     0.50MB  0.52%  regexp.makeOnePass.func1
+         0     0%   100%     0.50MB  0.52%  regexp.mergeRuneSets
+         0     0%   100%     0.50MB  0.52%  regexp/syntax.(*compiler).init (inline)
+         0     0%   100%     0.50MB  0.52%  regexp/syntax.Compile
+         0     0%   100%        2MB  2.08%  runtime.doInit (inline)
+         0     0%   100%        2MB  2.08%  runtime.doInit1
+         0     0%   100%        2MB  2.08%  runtime.main
+         0     0%   100%     0.50MB  0.52%  sort.Slice
+         0     0%   100%     0.53MB  0.55%  sync.(*Once).Do (inline)
+         0     0%   100%     0.53MB  0.55%  sync.(*Once).doSlow
+         0     0%   100%     1.51MB  1.56%  sync.(*Pool).Get
+         0     0%   100%     0.50MB  0.52%  syscall.StartProcess (inline)
+         0     0%   100%     0.50MB  0.52%  syscall.forkAndExecInChild
+         0     0%   100%     0.50MB  0.52%  syscall.forkExec

@@ -135,31 +135,13 @@ func (s *Server) SetupRoutes() {
 	v1 := s.Router.Group("/api/v1")
 	{
 		v1.POST("/docx", func(c *gin.Context) {
-			pdfContent, err := s.Handlers.PDF.GenerateDocx(c)
-			if err != nil {
-				logger.Error("Failed to generate PDF", zap.Error(err))
-				c.Header("Content-Type", "application/json; charset=utf-8")
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.Header("Content-Type", "application/pdf")
-			c.Header("Content-Disposition", "attachment; filename=result.pdf")
-			c.Data(http.StatusOK, "application/pdf", pdfContent)
+			s.Handlers.PDF.GenerateDocx(c)
 		})
 	}
 
 	// Поддержка старого endpoint'а для обратной совместимости
 	s.Router.POST("/generate-pdf", func(c *gin.Context) {
-		pdfContent, err := s.Handlers.PDF.GenerateDocx(c)
-		if err != nil {
-			logger.Error("Failed to generate PDF", zap.Error(err))
-			c.Header("Content-Type", "application/json; charset=utf-8")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.Header("Content-Type", "application/pdf")
-		c.Header("Content-Disposition", "attachment; filename=result.pdf")
-		c.Data(http.StatusOK, "application/pdf", pdfContent)
+		s.Handlers.PDF.GenerateDocx(c)
 	})
 
 	logger.Info("Routes configured",
