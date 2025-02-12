@@ -9,331 +9,335 @@ data:
   nas-pdf-service-dashboard.json: |
     {
       "annotations": {
-        "list": []
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
       },
       "editable": true,
       "fiscalYearStartMonth": 0,
       "graphTooltip": 0,
-      "id": null,
-      "title": "NAS PDF Service Dashboard",
-      "tags": ["nas", "pdf-service"],
-      "timezone": "browser",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "id": 3,
+      "links": [],
       "panels": [
         {
-          "title": "Service Overview",
-          "type": "row",
-          "collapsed": false,
-          "panels": []
-        },
-        {
-          "title": "Total Requests (24h)",
-          "type": "stat",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  { "color": "blue", "value": null }
-                ]
-              },
-              "unit": "none"
-            }
-          },
-          "options": {
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
-              "values": false
-            },
-            "textMode": "auto"
-          },
-          "targets": [
-            {
-              "expr": "sum(increase(pdf_requests_total[24h]))",
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              }
-            }
-          ],
-          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 1}
-        },
-        {
-          "title": "Errors (24h)",
-          "type": "stat",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 10 },
-                  { "color": "red", "value": 50 }
-                ]
-              },
-              "unit": "none"
-            }
-          },
-          "options": {
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
-              "values": false
-            },
-            "textMode": "auto"
-          },
-          "targets": [
-            {
-              "expr": "sum(increase(pdf_requests_total{status=\"error\"}[24h]))",
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              }
-            }
-          ],
-          "gridPos": {"h": 8, "w": 6, "x": 6, "y": 1}
-        },
-        {
-          "title": "Requests by Status (Last 7 days)",
-          "type": "timeseries",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "drawStyle": "line",
-                "lineInterpolation": "smooth",
-                "barAlignment": 0,
-                "spanNulls": false,
-                "showPoints": "never",
-                "fillOpacity": 25
-              },
               "color": {
                 "mode": "palette-classic"
               },
-              "unit": "short"
-            }
-          },
-          "options": {
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
             },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
             "legend": {
-              "showLegend": true,
+              "calcs": [
+                "lastNotNull",
+                "sum"
+              ],
               "displayMode": "table",
               "placement": "bottom",
-              "calcs": ["sum"]
-            }
-          },
-          "targets": [
-            {
-              "expr": "sum(rate(pdf_requests_total[5m])) by (status)",
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              }
-            }
-          ],
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 1}
-        },
-        {
-          "title": "Retry Statistics",
-          "type": "row",
-          "collapsed": false,
-          "panels": []
-        },
-        {
-          "title": "Retry Success Rate",
-          "type": "gauge",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  { "color": "red", "value": null },
-                  { "color": "yellow", "value": 80 },
-                  { "color": "green", "value": 95 }
-                ]
-              },
-              "unit": "percent"
-            }
-          },
-          "targets": [
-            {
-              "expr": "(sum(retry_attempts_total{status=\"success\"}) / sum(retry_attempts_total)) * 100",
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              }
-            }
-          ],
-          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 10}
-        },
-        {
-          "title": "Retry Attempts Distribution",
-          "type": "bargauge",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 10 },
-                  { "color": "red", "value": 50 }
-                ]
-              }
-            }
-          },
-          "targets": [
-            {
-              "expr": "sum(retry_attempts_total) by (attempt)",
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              }
-            }
-          ],
-          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 10}
-        },
-        {
-          "title": "Gotenberg Integration",
-          "type": "row",
-          "collapsed": false,
-          "panels": []
-        },
-        {
-          "title": "Gotenberg Request Duration",
-          "type": "timeseries",
-          "datasource": {
-            "type": "prometheus"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "drawStyle": "line",
-                "lineInterpolation": "smooth",
-                "spanNulls": false
-              },
-              "unit": "s"
-            }
-          },
-          "targets": [
-            {
-              "expr": "histogram_quantile(0.95, sum(rate(gotenberg_request_duration_seconds_bucket[5m])) by (le))",
-              "legendFormat": "p95"
+              "showLegend": true
             },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.5.1",
+          "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(gotenberg_request_duration_seconds_bucket[5m])) by (le))",
-              "legendFormat": "p50"
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "sum(pdf_requests_total{status=\"started\"}) - sum(pdf_requests_total{status=\"started\"} offset $__range)",
+              "instant": false,
+              "range": true,
+              "refId": "A"
             }
           ],
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 19}
+          "title": "Total Requests",
+          "type": "timeseries"
         },
         {
-          "title": "Gotenberg Error Rate",
-          "type": "stat",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "sum"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.5.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "sum(pdf_requests_total{status=\"error\"}) - sum(pdf_requests_total{status=\"error\"} offset $__range)",
+              "instant": false,
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Failed Requests",
+          "type": "timeseries"
+        },
+        {
           "datasource": {
             "type": "prometheus"
           },
           "fieldConfig": {
             "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 25,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
               "mappings": [],
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
-                  { "color": "green", "value": null },
-                  { "color": "yellow", "value": 1 },
-                  { "color": "red", "value": 5 }
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
                 ]
               },
-              "unit": "percent"
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "id": 3,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "sum"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
             }
           },
+          "pluginVersion": "11.5.1",
           "targets": [
             {
-              "expr": "sum(gotenberg_requests_total{status=\"error\"}) / sum(gotenberg_requests_total) * 100",
-              "legendFormat": "Error Rate"
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(pdf_requests_total) by (status) - sum(pdf_requests_total offset $__range) by (status)",
+              "refId": "A"
             }
           ],
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 19}
-        }
-      ],
-      "refresh": "10s",
-      "schemaVersion": 36,
-      "style": "dark",
-      "time": {
-        "from": "now-24h",
-        "to": "now"
-      },
-      "timepicker": {},
-      "weekStart": ""
-    }
-  retry-monitoring-dashboard.json: |
-    {
-      "annotations": {
-        "list": []
-      },
-      "editable": true,
-      "fiscalYearStartMonth": 0,
-      "graphTooltip": 0,
-      "id": null,
-      "links": [],
-      "liveNow": false,
-      "panels": [
+          "title": "Requests by Status",
+          "type": "timeseries"
+        },
         {
           "collapsed": false,
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 0
+            "y": 17
           },
-          "id": 1,
+          "id": 4,
           "panels": [],
-          "title": "Success Rates",
+          "title": "Retry Statistics",
           "type": "row"
         },
         {
@@ -344,6 +348,8 @@ data:
           "fieldConfig": {
             "defaults": {
               "mappings": [],
+              "max": 100,
+              "min": 0,
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -353,7 +359,7 @@ data:
                   },
                   {
                     "color": "yellow",
-                    "value": 90
+                    "value": 80
                   },
                   {
                     "color": "green",
@@ -362,15 +368,19 @@ data:
                 ]
               },
               "unit": "percent"
-            }
+            },
+            "overrides": []
           },
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
             "x": 0,
-            "y": 1
+            "y": 18
           },
+          "id": 5,
           "options": {
+            "minVizHeight": 75,
+            "minVizWidth": 75,
             "orientation": "auto",
             "reduceOptions": {
               "calcs": [
@@ -380,65 +390,292 @@ data:
               "values": false
             },
             "showThresholdLabels": false,
-            "showThresholdMarkers": true
+            "showThresholdMarkers": true,
+            "sizing": "auto"
           },
+          "pluginVersion": "11.5.1",
           "targets": [
             {
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "retry_success_rate{operation=\"$operation\"}",
+              "expr": "(sum(increase(retry_attempts_total{status=\"success\"}[$__range])) / sum(increase(retry_attempts_total[$__range]))) * 100",
               "refId": "A"
             }
           ],
-          "title": "Overall Success Rate",
+          "title": "Retry Success Rate",
           "type": "gauge"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 10
+                  },
+                  {
+                    "color": "red",
+                    "value": 50
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 18
+          },
+          "id": 6,
+          "options": {
+            "displayMode": "gradient",
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "sum"
+              ],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "maxVizHeight": 300,
+            "minVizHeight": 16,
+            "minVizWidth": 8,
+            "namePlacement": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true,
+            "sizing": "auto",
+            "valueMode": "color"
+          },
+          "pluginVersion": "11.5.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(increase(retry_attempts_total[$__range])) by (attempt)",
+              "refId": "A"
+            }
+          ],
+          "title": "Retry Attempts Distribution",
+          "type": "bargauge"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 26
+          },
+          "id": 7,
+          "panels": [],
+          "title": "Gotenberg Integration",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 27
+          },
+          "id": 8,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "sum"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.5.1",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(gotenberg_request_duration_seconds_bucket[$__range])) by (le))",
+              "legendFormat": "p95",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(gotenberg_request_duration_seconds_bucket[$__range])) by (le))",
+              "legendFormat": "p50",
+              "refId": "B"
+            }
+          ],
+          "title": "Gotenberg Request Duration",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 27
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "percentChangeColorMode": "standard",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showPercentChange": false,
+            "textMode": "auto",
+            "wideLayout": true
+          },
+          "pluginVersion": "11.5.1",
+          "targets": [
+            {
+              "expr": "sum(increase(gotenberg_requests_total{status=\"error\"}[$__range])) / sum(increase(gotenberg_requests_total[$__range])) * 100",
+              "legendFormat": "Error Rate",
+              "refId": "A"
+            }
+          ],
+          "title": "Gotenberg Error Rate",
+          "type": "stat"
         }
       ],
+      "preload": false,
       "refresh": "5s",
-      "schemaVersion": 38,
-      "style": "dark",
-      "tags": ["retry", "monitoring"],
+      "schemaVersion": 40,
+      "tags": [],
       "templating": {
-        "list": [
-          {
-            "current": {
-              "selected": false,
-              "text": "All",
-              "value": "$__all"
-            },
-            "datasource": {
-              "type": "prometheus",
-              "uid": "prometheus"
-            },
-            "definition": "label_values(retry_attempts_total, operation)",
-            "hide": 0,
-            "includeAll": true,
-            "label": "Operation",
-            "multi": false,
-            "name": "operation",
-            "options": [],
-            "query": {
-              "query": "label_values(retry_attempts_total, operation)",
-              "refId": "StandardVariableQuery"
-            },
-            "refresh": 2,
-            "regex": "",
-            "skipUrlSync": false,
-            "sort": 1,
-            "type": "query"
-          }
-        ]
+        "list": []
       },
       "time": {
-        "from": "now-1h",
+        "from": "now-5m",
         "to": "now"
       },
       "timepicker": {},
       "timezone": "",
-      "title": "Retry Monitoring",
-      "uid": "retry-monitoring",
-      "version": 1,
+      "title": "NAS PDF Service Dashboard",
+      "uid": "nas-pdf-service-dashboard",
+      "version": 2,
       "weekStart": ""
-    } 
+    }
