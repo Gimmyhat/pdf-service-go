@@ -53,6 +53,15 @@ build-local:
 	docker-compose build
 	@echo "Successfully built local development image"
 
+deploy-local:
+	@echo "Deploying services locally..."
+	docker-compose down
+	@echo "Stopped existing services"
+	docker-compose up -d
+	@echo "Started services"
+	@echo "Checking services status..."
+	docker-compose ps
+
 # Проверка наличия образа в Docker Hub
 check-image:
 	@echo "Checking if image $(IMAGE_NAME):$(VERSION) exists..."
@@ -279,6 +288,7 @@ help:
 	@echo "  build               - Build and push Docker image (using existing version if available)"
 	@echo "  build-new          - Build and push Docker image (always generate new version)"
 	@echo "  build-local        - Build Docker image for local development"
+	@echo "  deploy-local       - Deploy services locally (stops existing, rebuilds and starts)"
 	@echo "  get-version        - Show current version"
 	@echo "  deploy             - Deploy to specified cluster (use ENV=test or ENV=prod)"
 	@echo "  deploy-test        - Deploy to test cluster (alias for deploy ENV=test)"
