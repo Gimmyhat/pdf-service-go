@@ -7,6 +7,7 @@ require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.26.0
+	github.com/unidoc/unioffice v1.28.0
 )
 
 require (
