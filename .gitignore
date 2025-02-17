@@ -88,4 +88,7 @@ load_test_results.json
 # Локальные тестовые файлы
 test/*.json
 !test/test-valid.json
-!test/test-invalid.json 
+!test/test-invalid.json
+
+# API ключи
+.unidoc.key 
