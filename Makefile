@@ -89,25 +89,12 @@ deploy-monitoring: deploy-prometheus deploy-grafana deploy-jaeger
 
 # Проверка корректности ENV
 check-env:
-	@if ! [ "$(ENV)" = "test" ] && ! [ "$(ENV)" = "prod" ]; then \
-		echo "Error: ENV must be either 'test' or 'prod'"; \
-		exit 1; \
-	fi
+	@powershell -Command "if ('$(ENV)' -ne 'test' -and '$(ENV)' -ne 'prod') { Write-Host 'Error: ENV must be either ''test'' or ''prod'''; exit 1 }"
 
 # Универсальная команда деплоя
 deploy: check-image check-cluster-connection check-env
 	@echo "Deploying version $(VERSION) to $(ENV) cluster ($(CONTEXT))..."
 	$(call retry_kubectl,kubectl config use-context $(CONTEXT))
-	@echo "Deploying monitoring services..."
-	$(call retry_kubectl,kubectl apply -f k8s/prometheus-deployment.yaml)
-	$(call retry_kubectl,kubectl apply -f k8s/grafana-deployment.yaml)
-	$(call retry_kubectl,kubectl apply -f k8s/grafana-datasources.yaml)
-	$(call retry_kubectl,kubectl apply -f k8s/grafana-dashboards.yaml)
-	$(call retry_kubectl,kubectl apply -f k8s/jaeger-deployment.yaml)
-	@echo "Waiting for monitoring services..."
-	$(call retry_kubectl,kubectl rollout status deployment/nas-prometheus -n print-serv)
-	$(call retry_kubectl,kubectl rollout status deployment/nas-grafana -n print-serv)
-	$(call retry_kubectl,kubectl rollout status deployment/nas-jaeger -n print-serv)
 	@echo "Deploying application services..."
 	@powershell -Command "(Get-Content k8s/configmap.yaml) -replace 'OTEL_SERVICE_VERSION: .*', 'OTEL_SERVICE_VERSION: $(VERSION)'" | kubectl apply -f -
 	$(call retry_kubectl,kubectl apply -f k8s/gotenberg-deployment.yaml)

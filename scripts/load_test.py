@@ -28,6 +28,7 @@ class LoadTester:
         self.stage_stats = defaultdict(dict)
 
     async def make_request(self, session, request_id):
+        print(f"Starting request {request_id}")
         try:
             # Добавляем заголовки для трейсинга
             headers = {
@@ -74,19 +75,24 @@ class LoadTester:
             return None, None
 
     async def run_test(self):
+        print("Starting test execution...")
         self.start_time = time.time()
         async with aiohttp.ClientSession() as session:
             tasks = []
             for i in range(self.total_requests):
+                print(f"Creating task {i + 1}")
                 task = asyncio.create_task(self.make_request(session, i + 1))
                 tasks.append(task)
                 if len(tasks) >= self.concurrency:
+                    print(f"Executing batch of {len(tasks)} tasks")
                     await asyncio.gather(*tasks)
                     tasks = []
                     print(f"Completed batch of {self.concurrency} requests")
             if tasks:
+                print(f"Executing final batch of {len(tasks)} tasks")
                 await asyncio.gather(*tasks)
         self.end_time = time.time()
+        print("Test execution completed")
 
     def analyze_stages(self):
         """Анализирует статистику по этапам обработки"""
