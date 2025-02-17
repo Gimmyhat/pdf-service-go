@@ -83,35 +83,19 @@ logger = setup_logging()
 # Записываем разделитель для нового запуска
 logger.info("New document generation started", extra={'operation': 'START'})
 
-# Глобальный кэш для шаблонов
-template_cache = {}
-
 def format_date(date_str, request_id='unknown'):
     """Форматирует дату из строки ISO в формат DD.MM.YYYY"""
     try:
-        logger.info(f"Starting date formatting for: {date_str}", extra={'request_id': request_id})
         if not date_str:
-            logger.info("Empty date string, returning empty string", extra={'request_id': request_id})
             return ""
         
-        logger.info(f"Input date string type: {type(date_str)}", extra={'request_id': request_id})
         if isinstance(date_str, str):
-            # Удаляем возможный суффикс г.
             date_str = date_str.replace(" г.", "")
-            
-            has_timezone = any(x in date_str for x in ['+', '-', 'Z'])
-            logger.info(f"Has timezone: {has_timezone}", extra={'request_id': request_id})
-            logger.info(f"Normalized date string: {date_str}", extra={'request_id': request_id})
         
         date_obj = parser.parse(date_str)
-        logger.info(f"Parsed date: {date_obj}", extra={'request_id': request_id})
-        
-        formatted = date_obj.strftime("%d.%m.%Y")
-        logger.info(f"Formatted result: {formatted}", extra={'request_id': request_id})
-        return formatted
+        return date_obj.strftime("%d.%m.%Y")
     except Exception as e:
         logger.error(f"Error formatting date {date_str}: {e}", extra={'request_id': request_id})
-        logger.error(f"Date string type: {type(date_str)}", extra={'request_id': request_id})
         return date_str
 
 def generate_applicant_info(data):
@@ -150,19 +134,43 @@ def generate_applicant_info(data):
         logger.error(f"Error generating applicant info: {e}")
         return ''
 
-def get_template(template_path):
-    """Получает шаблон из кэша или загружает новый."""
-    if template_path not in template_cache:
-        template_cache[template_path] = DocxTemplate(template_path)
-        # Логируем информацию о шаблоне
-        template = template_cache[template_path]
-        try:
-            # Попытка получить все переменные из шаблона
-            variables = template.get_undeclared_template_variables()
-            logger.info(f"Template variables found: {variables}")
-        except Exception as e:
-            logger.error(f"Error analyzing template: {e}")
-    return template_cache[template_path]
+def process_template(template_path, data, output_path):
+    try:
+        request_id = data.get('requestId', 'unknown')
+        logger.info(f"Starting template processing", extra={'request_id': request_id, 'operation': 'CREATE'})
+        
+        # Форматируем даты
+        if 'creationDate' in data:
+            data['creationDate_original'] = data['creationDate']
+            data['creationDate'] = format_date(data['creationDate'], request_id)
+        
+        if 'registryItems' in data and isinstance(data['registryItems'], list):
+            for item in data['registryItems']:
+                if 'informationDate' in item and item['informationDate']:
+                    item['informationDate'] = format_date(item['informationDate'], request_id)
+
+        # Генерируем информацию о заявителе
+        data['applicant_info'] = generate_applicant_info(data)
+
+        # Загружаем и рендерим шаблон
+        doc = DocxTemplate(template_path)
+        doc.render(data)
+        
+        # Добавляем нумерацию страниц в футер
+        section = doc.docx.sections[0]
+        footer = section.footer
+        paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        paragraph.alignment = 2  # По правому краю
+        add_page_number(paragraph)
+        
+        # Сохраняем документ
+        doc.save(output_path)
+        logger.info(f"Document saved to: {output_path}", extra={'request_id': request_id})
+
+        return True
+    except Exception as e:
+        logger.error(f"Error processing template: {e}", extra={'request_id': request_id})
+        return False
 
 def add_page_number(paragraph):
     """Добавляет поля номера страницы в параграф"""
@@ -196,100 +204,6 @@ def add_page_number(paragraph):
     fldChar4 = OxmlElement('w:fldChar')
     fldChar4.set(qn('w:fldCharType'), 'end')
     run._r.append(fldChar4)
-
-def process_template(template_path, data, output_path):
-    try:
-        # Получаем request_id из данных
-        request_id = data.get('requestId', 'unknown')
-        logger.info(f"Starting template processing", extra={'request_id': request_id, 'operation': 'CREATE'})
-        
-        # Оптимальное количество потоков
-        cpu_count = min(multiprocessing.cpu_count(), 4)
-        
-        # Сохраняем исходную дату для сравнения
-        original_date = data.get('creationDate')
-        logger.info(f"Original date from request: {original_date}", extra={'request_id': request_id})
-        logger.info(f"Initial data structure: {json.dumps(data, indent=2, ensure_ascii=False)}", extra={'request_id': request_id})
-        logger.info(f"Template path: {template_path}", extra={'request_id': request_id})
-        
-        with ThreadPoolExecutor(max_workers=cpu_count) as executor:
-            futures = []
-            
-            # Форматируем даты асинхронно
-            if 'creationDate' in data:
-                logger.info(f"Found creationDate in data: {data['creationDate']}", extra={'request_id': request_id})
-                logger.info(f"Date value type before formatting: {type(data['creationDate'])}", extra={'request_id': request_id})
-                futures.append(('creationDate', executor.submit(format_date, data['creationDate'], request_id)))
-            else:
-                logger.warning("No creationDate found in data", extra={'request_id': request_id})
-            
-            if 'registryItems' in data and isinstance(data['registryItems'], list):
-                logger.info(f"Processing {len(data['registryItems'])} registry items", extra={'request_id': request_id})
-                for i, item in enumerate(data['registryItems']):
-                    if 'informationDate' in item and item['informationDate']:
-                        futures.append((f'registry_{i}', executor.submit(format_date, item['informationDate'], request_id)))
-
-            # Генерируем информацию о заявителе асинхронно
-            futures.append(('applicant_info', executor.submit(generate_applicant_info, data)))
-
-            # Собираем результаты
-            for key, future in futures:
-                try:
-                    result = future.result()
-                    if key == 'creationDate':
-                        logger.info(f"Processing creationDate result: {result}", extra={'request_id': request_id})
-                        logger.info(f"Result type: {type(result)}", extra={'request_id': request_id})
-                        data['creationDate_original'] = original_date
-                        data['creationDate'] = result
-                        logger.info(f"Updated data with formatted date: {data['creationDate']}", extra={'request_id': request_id})
-                        logger.info(f"Date value type after formatting: {type(data['creationDate'])}", extra={'request_id': request_id})
-                    elif key == 'applicant_info':
-                        data['applicant_info'] = result
-                    elif key.startswith('registry_'):
-                        idx = int(key.split('_')[1])
-                        data['registryItems'][idx]['informationDate'] = result
-                except Exception as e:
-                    logger.error(f"Error processing {key}: {e}", extra={'request_id': request_id})
-                    logger.error(f"Exception details: {str(e)}", extra={'request_id': request_id})
-
-        logger.info("Template variables before rendering:", extra={'request_id': request_id})
-        doc = get_template(template_path)
-        
-        try:
-            variables = doc.get_undeclared_template_variables()
-            logger.info(f"Template expects variables: {variables}", extra={'request_id': request_id})
-            # Проверяем, какие переменные шаблон ожидает для даты
-            date_vars = [var for var in variables if 'date' in var.lower()]
-            logger.info(f"Date-related template variables: {date_vars}", extra={'request_id': request_id})
-        except Exception as e:
-            logger.error(f"Error getting template variables: {e}", extra={'request_id': request_id})
-
-        logger.info(f"Final data before rendering: {json.dumps(data, indent=2, ensure_ascii=False)}", extra={'request_id': request_id})
-        logger.info(f"Final creationDate value: {data.get('creationDate')}", extra={'request_id': request_id})
-        logger.info(f"Final creationDate type: {type(data.get('creationDate'))}", extra={'request_id': request_id})
-        
-        # Рендерим шаблон
-        doc.render(data)
-        
-        # Добавляем нумерацию страниц в футер
-        section = doc.docx.sections[0]
-        footer = section.footer
-        paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
-        paragraph.alignment = 2  # По правому краю
-        add_page_number(paragraph)
-        
-        # Сохраняем документ
-        doc.save(output_path)
-        logger.info(f"Document saved to: {output_path}", extra={'request_id': request_id})
-
-        # Очищаем память
-        gc.collect()
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error processing template: {e}", extra={'request_id': request_id})
-        logger.error(f"Exception details: {str(e)}", extra={'request_id': request_id})
-        return False
 
 def main():
     if len(sys.argv) != 4:
