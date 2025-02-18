@@ -1,0 +1,65 @@
+groups:
+- name: pdf-service
+  rules:
+  - alert: GotenbergCircuitBreakerOpen
+    expr: circuit_breaker_state{name="gotenberg"} == 1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Gotenberg Circuit Breaker открыт"
+      description: "Circuit Breaker для Gotenberg находится в состоянии Open более 1 минуты"
+
+  - alert: DocxGeneratorCircuitBreakerOpen
+    expr: circuit_breaker_state{name="docx-generator"} == 1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "DOCX Generator Circuit Breaker открыт"
+      description: "Circuit Breaker для генератора DOCX находится в состоянии Open более 1 минуты"
+
+  - alert: HighDocxGenerationErrors
+    expr: rate(docx_generation_errors_total[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Высокий уровень ошибок генерации DOCX"
+      description: "Частота ошибок генерации DOCX превышает 10% за последние 5 минут"
+
+  - alert: SlowDocxGeneration
+    expr: histogram_quantile(0.95, rate(docx_generation_duration_seconds_bucket{status="success"}[5m])) > 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Медленная генерация DOCX"
+      description: "95-й процентиль времени генерации DOCX превышает 10 секунд"
+
+  - alert: HighGotenbergErrors
+    expr: rate(gotenberg_requests_total{status="error"}[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Высокий уровень ошибок Gotenberg"
+      description: "Частота ошибок Gotenberg превышает 10% за последние 5 минут"
+
+  - alert: SlowGotenbergConversion
+    expr: histogram_quantile(0.95, rate(gotenberg_request_duration_seconds_bucket{operation="convert"}[5m])) > 15
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Медленная конвертация PDF"
+      description: "95-й процентиль времени конвертации PDF превышает 15 секунд"
+
+  - alert: LargePDFFiles
+    expr: histogram_quantile(0.95, rate(pdf_file_size_bytes_bucket[5m])) > 10485760
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Большие размеры PDF файлов"
+      description: "95-й процентиль размера PDF файлов превышает 10MB" 

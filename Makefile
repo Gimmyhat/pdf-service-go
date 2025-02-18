@@ -53,6 +53,15 @@ build-local:
 	docker-compose build
 	@echo "Successfully built local development image"
 
+deploy-local:
+	@echo "Deploying services locally..."
+	docker-compose down
+	@echo "Stopped existing services"
+	docker-compose up -d
+	@echo "Started services"
+	@echo "Checking services status..."
+	docker-compose ps
+
 # Проверка наличия образа в Docker Hub
 check-image:
 	@echo "Checking if image $(IMAGE_NAME):$(VERSION) exists..."
@@ -89,12 +98,25 @@ deploy-monitoring: deploy-prometheus deploy-grafana deploy-jaeger
 
 # Проверка корректности ENV
 check-env:
-	@powershell -Command "if ('$(ENV)' -ne 'test' -and '$(ENV)' -ne 'prod') { Write-Host 'Error: ENV must be either ''test'' or ''prod'''; exit 1 }"
+	@if ! [ "$(ENV)" = "test" ] && ! [ "$(ENV)" = "prod" ]; then \
+		echo "Error: ENV must be either 'test' or 'prod'"; \
+		exit 1; \
+	fi
 
 # Универсальная команда деплоя
 deploy: check-image check-cluster-connection check-env
 	@echo "Deploying version $(VERSION) to $(ENV) cluster ($(CONTEXT))..."
 	$(call retry_kubectl,kubectl config use-context $(CONTEXT))
+	@echo "Deploying monitoring services..."
+	$(call retry_kubectl,kubectl apply -f k8s/prometheus-deployment.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/grafana-deployment.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/grafana-datasources.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/grafana-dashboards.yaml)
+	$(call retry_kubectl,kubectl apply -f k8s/jaeger-deployment.yaml)
+	@echo "Waiting for monitoring services..."
+	$(call retry_kubectl,kubectl rollout status deployment/nas-prometheus -n print-serv)
+	$(call retry_kubectl,kubectl rollout status deployment/nas-grafana -n print-serv)
+	$(call retry_kubectl,kubectl rollout status deployment/nas-jaeger -n print-serv)
 	@echo "Deploying application services..."
 	@powershell -Command "(Get-Content k8s/configmap.yaml) -replace 'OTEL_SERVICE_VERSION: .*', 'OTEL_SERVICE_VERSION: $(VERSION)'" | kubectl apply -f -
 	$(call retry_kubectl,kubectl apply -f k8s/gotenberg-deployment.yaml)
@@ -266,6 +288,7 @@ help:
 	@echo "  build               - Build and push Docker image (using existing version if available)"
 	@echo "  build-new          - Build and push Docker image (always generate new version)"
 	@echo "  build-local        - Build Docker image for local development"
+	@echo "  deploy-local       - Deploy services locally (stops existing, rebuilds and starts)"
 	@echo "  get-version        - Show current version"
 	@echo "  deploy             - Deploy to specified cluster (use ENV=test or ENV=prod)"
 	@echo "  deploy-test        - Deploy to test cluster (alias for deploy ENV=test)"

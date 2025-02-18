@@ -61,34 +61,4 @@ scripts/venv/
 current_version.txt
 k8s/templates-configmap-filled.yaml
 k8s/grafana-dashboards.yaml
-backups/
-
-# Временные файлы и артефакты
-*.exe
-output*.docx
-result.pdf
-scripts/output.docx
-scripts/obj/
-scripts/bin/
-venv/
-__pycache__/
-*.pyc
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Временные файлы профилирования
-profiles/
-stage_times_*.png
-load_test_results.json
-
-# Локальные тестовые файлы
-test/*.json
-!test/test-valid.json
-!test/test-invalid.json
-
-# API ключи
-.unidoc.key 
+backups/ 

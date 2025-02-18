@@ -10,7 +10,7 @@ services:
     environment:
       - GIN_MODE=release
       - GOTENBERG_API_URL=http://gotenberg:3000
-      - LOG_LEVEL=debug
+      - LOG_LEVEL=debug  # Для разработки используем debug уровень
     depends_on:
       - gotenberg
 
@@ -18,8 +18,18 @@ services:
     image: gotenberg/gotenberg:7.10
     ports:
       - "3000:3000"
+    environment:
+      - GOTENBERG_MAX_WORKERS=4
+      - GOTENBERG_CHROMIUM_MAX_QUEUE_SIZE=10
+      - GOTENBERG_LIBREOFFICE_MAX_QUEUE_SIZE=10
+      - GOTENBERG_DEFAULT_WAIT_TIMEOUT=30
+      - GOTENBERG_DEFAULT_WAIT_DELAY=1
     command:
       - "gotenberg"
       - "--api-port=3000"
-      - "--api-timeout=60s"
-      - "--chromium-disable-javascript" 
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+      - "--uno-listener-restart-threshold=0"
+      - "--maximum-wait-timeout=60"
+      - "--maximum-wait-delay=2"
+      - "--libreoffice-max-workers=4" 
