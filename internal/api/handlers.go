@@ -12,13 +12,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// Handlers содержит все обработчики API
 type Handlers struct {
-	PDF *handlers.PDFHandler
+	PDF        *handlers.PDFHandler
+	Statistics *handlers.StatisticsHandler
 }
 
-func NewHandlers(pdfHandler *handlers.PDFHandler) *Handlers {
+// NewHandlers создает новые обработчики
+func NewHandlers(service pdf.Service) *Handlers {
 	return &Handlers{
-		PDF: pdfHandler,
+		PDF:        handlers.NewPDFHandler(service),
+		Statistics: handlers.NewStatisticsHandler(),
 	}
 }
 

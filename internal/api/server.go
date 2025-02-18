@@ -88,8 +88,9 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 		}
 	})
 
-	// Добавляем middleware для метрик
+	// Добавляем middleware для метрик и статистики
 	router.Use(middleware.PrometheusMiddleware())
+	router.Use(middleware.StatisticsMiddleware())
 
 	// Добавляем middleware для трейсинга
 	router.Use(tracing.GinTracingMiddleware())
@@ -119,6 +120,17 @@ func (s *Server) SetupRoutes() {
 	// Метрики Prometheus
 	s.Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	// Статистика API
+	s.Router.GET("/api/v1/statistics", s.Handlers.Statistics.GetStatistics)
+
+	// Веб-интерфейс для статистики
+	s.Router.GET("/stats", func(c *gin.Context) {
+		c.File("internal/static/index.html")
+	})
+
+	// Статические файлы
+	s.Router.Static("/static", "internal/static")
+
 	// Тестовый эндпоинт для проверки логирования ошибок
 	s.Router.GET("/test-error", func(c *gin.Context) {
 		logger.Error("Test error endpoint called",
@@ -147,6 +159,8 @@ func (s *Server) SetupRoutes() {
 	logger.Info("Routes configured",
 		logger.Field("health_endpoint", "/health"),
 		logger.Field("metrics_endpoint", "/metrics"),
+		logger.Field("statistics_endpoint", "/api/v1/statistics"),
+		logger.Field("statistics_ui", "/stats"),
 		logger.Field("test_endpoint", "/test-error"),
 		logger.Field("api_endpoints", []string{"/api/v1/docx", "/generate-pdf"}),
 	)

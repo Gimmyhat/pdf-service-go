@@ -41,6 +41,7 @@ RUN pypy3 -m pip install --no-cache-dir -r requirements-pypy.txt
 COPY --from=builder /app/main .
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/internal/domain/pdf/templates ./internal/domain/pdf/templates
+COPY --from=builder /app/internal/static ./internal/static
 
 # Настройка переменных окружения
 ENV GIN_MODE=release \

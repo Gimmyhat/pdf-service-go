@@ -6,7 +6,6 @@ import (
 	_ "net/http/pprof" // Импортируем pprof
 	"os"
 	"pdf-service-go/internal/api"
-	"pdf-service-go/internal/api/handlers"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/tracing"
@@ -67,8 +66,7 @@ func main() {
 	logger.Info("PDF service created", logger.Field("gotenberg_url", gotenbergURL))
 
 	// Создаем обработчики
-	pdfHandler := handlers.NewPDFHandler(pdfService)
-	handlers := api.NewHandlers(pdfHandler)
+	handlers := api.NewHandlers(pdfService)
 	logger.Info("Handlers initialized")
 
 	// Создаем и настраиваем сервер

@@ -8,6 +8,7 @@ import (
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/statistics"
 	"strconv"
 	"strings"
 	"time"
@@ -24,21 +25,29 @@ var (
 
 type PDFHandler struct {
 	service pdf.Service
+	stats   *statistics.Statistics
 }
 
 func NewPDFHandler(service pdf.Service) *PDFHandler {
-	return &PDFHandler{
+	handler := &PDFHandler{
 		service: service,
 	}
+	handler.AddStatisticsTracking()
+	return handler
 }
 
 // ... existing code ...
 
 func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 	startTime := time.Now()
+	var err error
+
+	defer func() {
+		h.TrackDocxGeneration(time.Since(startTime), err != nil)
+	}()
 
 	var req pdf.DocxRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err = c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Failed to parse request",
 			zap.Error(err),
 			zap.String("content_type", c.GetHeader("Content-Type")),
@@ -56,7 +65,7 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 		return
 	}
 
-	if err := h.validateRequest(&req); err != nil {
+	if err = h.validateRequest(&req); err != nil {
 		logger.Error("Request validation failed", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("validation error: %v", err)})
 		return
@@ -72,6 +81,9 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 		c.JSON(h.determineErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
+
+	// Отслеживаем размер PDF
+	h.TrackPDFFile(int64(len(pdfContent)))
 
 	totalDuration := time.Since(startTime)
 

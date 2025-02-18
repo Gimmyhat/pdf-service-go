@@ -27,9 +27,7 @@ services:
     command:
       - "gotenberg"
       - "--api-port=3000"
+      - "--api-timeout=60s"
       - "--chromium-disable-javascript=true"
       - "--chromium-allow-list=file:///tmp/.*"
-      - "--uno-listener-restart-threshold=0"
-      - "--maximum-wait-timeout=60"
-      - "--maximum-wait-delay=2"
-      - "--libreoffice-max-workers=4" 
+      - "--libreoffice-restart-after=0" 

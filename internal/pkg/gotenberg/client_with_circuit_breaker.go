@@ -74,3 +74,17 @@ func (c *ClientWithCircuitBreaker) State() circuitbreaker.State {
 func (c *ClientWithCircuitBreaker) IsHealthy() bool {
 	return c.cb.IsHealthy()
 }
+
+// GetHandler возвращает обработчик статистики из базового клиента
+func (c *ClientWithCircuitBreaker) GetHandler() (interface {
+	TrackGotenbergRequest(duration time.Duration, hasError bool)
+}, bool) {
+	return c.client.GetHandler()
+}
+
+// SetHandler устанавливает обработчик статистики для базового клиента
+func (c *ClientWithCircuitBreaker) SetHandler(handler interface {
+	TrackGotenbergRequest(duration time.Duration, hasError bool)
+}) {
+	c.client.SetHandler(handler)
+}

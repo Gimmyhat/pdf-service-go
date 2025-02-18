@@ -20,11 +20,20 @@ def format_date(date_str):
     try:
         if not date_str:
             return ""
-        date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        if isinstance(date_str, str):
+            # Удаляем миллисекунды, если они есть
+            if '.' in date_str:
+                date_str = date_str.split('.')[0]
+            # Добавляем UTC если нет временной зоны
+            if 'Z' not in date_str and '+' not in date_str and '-' not in date_str:
+                date_str += 'Z'
+            date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        else:
+            date_obj = datetime.fromisoformat(str(date_str))
         return date_obj.strftime("%d.%m.%Y")
     except Exception as e:
         logger.error(f"Error formatting date {date_str}: {e}")
-        return date_str
+        return str(date_str)
 
 def generate_applicant_info(data):
     """Генерирует информацию о заявителе на основе данных запроса."""

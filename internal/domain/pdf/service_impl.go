@@ -13,6 +13,7 @@ import (
 	"pdf-service-go/internal/pkg/gotenberg"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/metrics"
+	"pdf-service-go/internal/pkg/statistics"
 
 	"go.uber.org/zap"
 )
@@ -22,12 +23,34 @@ type ServiceImpl struct {
 	docxGenerator   *docxgen.Generator
 }
 
+type StatsHandler struct {
+	stats *statistics.Statistics
+}
+
+func (h *StatsHandler) TrackGotenbergRequest(duration time.Duration, hasError bool) {
+	h.stats.TrackGotenbergRequest(duration, hasError)
+}
+
 func NewService(gotenbergURL string) Service {
+	client := gotenberg.NewClientWithCircuitBreaker(gotenbergURL)
+	handler := &StatsHandler{
+		stats: statistics.GetInstance(),
+	}
+	client.SetHandler(handler)
+
 	return &ServiceImpl{
-		gotenbergClient: gotenberg.NewClientWithCircuitBreaker(gotenbergURL),
+		gotenbergClient: client,
 		docxGenerator:   docxgen.NewGenerator("scripts/generate_docx.py"),
 	}
 }
+
+type contextKey string
+
+const (
+	startTimeKey      contextKey = "start_time"
+	docxGenerationKey contextKey = "docx_generation_time"
+	pdfConversionKey  contextKey = "pdf_conversion_time"
+)
 
 func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byte, error) {
 	log := logger.Log.With(
@@ -40,9 +63,9 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	var pdfConversionTime time.Duration
 
 	// Сохраняем метрики в контекст
-	ctx = context.WithValue(ctx, "start_time", start)
-	ctx = context.WithValue(ctx, "docx_generation_time", &docxGenerationTime)
-	ctx = context.WithValue(ctx, "pdf_conversion_time", &pdfConversionTime)
+	ctx = context.WithValue(ctx, startTimeKey, start)
+	ctx = context.WithValue(ctx, docxGenerationKey, &docxGenerationTime)
+	ctx = context.WithValue(ctx, pdfConversionKey, &pdfConversionTime)
 
 	defer func() {
 		duration := time.Since(start)

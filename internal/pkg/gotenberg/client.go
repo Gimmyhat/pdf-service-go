@@ -17,6 +17,9 @@ import (
 type Client struct {
 	baseURL string
 	client  *http.Client
+	handler interface {
+		TrackGotenbergRequest(duration time.Duration, hasError bool)
+	}
 }
 
 func NewClient(baseURL string) *Client {
@@ -42,11 +45,31 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
+// SetHandler устанавливает обработчик для сбора статистики
+func (c *Client) SetHandler(handler interface {
+	TrackGotenbergRequest(duration time.Duration, hasError bool)
+}) {
+	c.handler = handler
+}
+
+// GetHandler возвращает обработчик статистики
+func (c *Client) GetHandler() (interface {
+	TrackGotenbergRequest(duration time.Duration, hasError bool)
+}, bool) {
+	if c.handler == nil {
+		return nil, false
+	}
+	return c.handler, true
+}
+
 func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 	start := time.Now()
 	defer func() {
-		duration := time.Since(start).Seconds()
-		metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(duration)
+		duration := time.Since(start)
+		metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(duration.Seconds())
+		if c.handler != nil {
+			c.handler.TrackGotenbergRequest(duration, false)
+		}
 	}()
 
 	// Создаем буфер для multipart формы с оптимизированным размером
