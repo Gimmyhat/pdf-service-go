@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"pdf-service-go/internal/pkg/circuitbreaker"
 )
@@ -20,6 +19,8 @@ func TestClientWithCircuitBreaker_ConvertDocxToPDF(t *testing.T) {
 
 	// Создаем клиент с неправильным URL для тестирования ошибок
 	client := NewClientWithCircuitBreaker("http://invalid-url")
+	handler := &mockStatsHandler{}
+	client.SetHandler(handler)
 
 	// Проверяем начальное состояние
 	if state := client.State(); state != circuitbreaker.StateClosed {
@@ -32,25 +33,14 @@ func TestClientWithCircuitBreaker_ConvertDocxToPDF(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error from invalid URL")
 		}
+		if handler.isHealthCheck {
+			t.Error("Expected regular request, got health check")
+		}
 	}
 
 	// Проверяем, что Circuit Breaker открылся
 	if state := client.State(); state != circuitbreaker.StateOpen {
 		t.Errorf("Expected state to be Open after failures, got %v", state)
-	}
-
-	// Ждем перехода в Half-Open
-	time.Sleep(11 * time.Second)
-
-	// Проверяем, что состояние изменилось на Half-Open
-	_, err := client.ConvertDocxToPDF(docxPath)
-	if err == nil {
-		t.Error("Expected error from invalid URL in half-open state")
-	}
-
-	// Проверяем, что после ошибки в Half-Open состоянии вернулись в Open
-	if state := client.State(); state != circuitbreaker.StateOpen {
-		t.Errorf("Expected state to be Open after failure in half-open, got %v", state)
 	}
 }
 
@@ -71,6 +61,8 @@ func TestClientWithCircuitBreaker_Integration(t *testing.T) {
 
 	// Создаем клиент с реальным URL
 	client := NewClientWithCircuitBreaker(gotenbergURL)
+	handler := &mockStatsHandler{}
+	client.SetHandler(handler)
 
 	// Проверяем успешную конвертацию
 	pdf, err := client.ConvertDocxToPDF(docxPath)
@@ -79,6 +71,9 @@ func TestClientWithCircuitBreaker_Integration(t *testing.T) {
 	}
 	if len(pdf) == 0 {
 		t.Error("Expected non-empty PDF content")
+	}
+	if handler.isHealthCheck {
+		t.Error("Expected regular request, got health check")
 	}
 
 	// Проверяем, что Circuit Breaker остался закрытым

@@ -12,7 +12,6 @@ import (
 	"pdf-service-go/internal/api/middleware"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/logger"
-	"pdf-service-go/internal/pkg/tracing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -91,9 +90,6 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	// Добавляем middleware для метрик и статистики
 	router.Use(middleware.PrometheusMiddleware())
 	router.Use(middleware.StatisticsMiddleware())
-
-	// Добавляем middleware для трейсинга
-	router.Use(tracing.GinTracingMiddleware())
 
 	// Добавляем middleware для таймаутов
 	router.Use(func(c *gin.Context) {

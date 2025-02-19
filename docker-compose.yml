@@ -7,6 +7,7 @@ services:
       - "8080:8080"
     volumes:
       - ./internal/domain/pdf/templates:/app/internal/domain/pdf/templates
+      - pdf_stats:/app/data
     environment:
       - GIN_MODE=release
       - GOTENBERG_API_URL=http://gotenberg:3000
@@ -30,4 +31,7 @@ services:
       - "--api-timeout=60s"
       - "--chromium-disable-javascript=true"
       - "--chromium-allow-list=file:///tmp/.*"
-      - "--libreoffice-restart-after=0" 
+      - "--libreoffice-restart-after=0"
+
+volumes:
+  pdf_stats: 

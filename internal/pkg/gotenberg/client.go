@@ -18,7 +18,7 @@ type Client struct {
 	baseURL string
 	client  *http.Client
 	handler interface {
-		TrackGotenbergRequest(duration time.Duration, hasError bool)
+		TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
 	}
 }
 
@@ -47,14 +47,14 @@ func NewClient(baseURL string) *Client {
 
 // SetHandler устанавливает обработчик для сбора статистики
 func (c *Client) SetHandler(handler interface {
-	TrackGotenbergRequest(duration time.Duration, hasError bool)
+	TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
 }) {
 	c.handler = handler
 }
 
 // GetHandler возвращает обработчик статистики
 func (c *Client) GetHandler() (interface {
-	TrackGotenbergRequest(duration time.Duration, hasError bool)
+	TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
 }, bool) {
 	if c.handler == nil {
 		return nil, false
@@ -68,7 +68,7 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 		duration := time.Since(start)
 		metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(duration.Seconds())
 		if c.handler != nil {
-			c.handler.TrackGotenbergRequest(duration, false)
+			c.handler.TrackGotenbergRequest(duration, false, false)
 		}
 	}()
 
@@ -139,4 +139,47 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 
 	metrics.GotenbergRequestsTotal.WithLabelValues("success").Inc()
 	return responseBuf.Bytes(), nil
+}
+
+// HealthCheck выполняет проверку здоровья сервиса Gotenberg
+func (c *Client) HealthCheck(skipStats ...bool) error {
+	start := time.Now()
+	shouldSkip := len(skipStats) > 0 && skipStats[0]
+
+	defer func() {
+		duration := time.Since(start)
+		if !shouldSkip {
+			metrics.GotenbergRequestDuration.WithLabelValues("health").Observe(duration.Seconds())
+			if c.handler != nil {
+				c.handler.TrackGotenbergRequest(duration, false, true)
+			}
+		}
+	}()
+
+	resp, err := c.client.Get(c.baseURL + "/health")
+	if err != nil {
+		if !shouldSkip {
+			metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
+			if c.handler != nil {
+				c.handler.TrackGotenbergRequest(time.Since(start), true, true)
+			}
+		}
+		return fmt.Errorf("health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if !shouldSkip {
+			metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
+			if c.handler != nil {
+				c.handler.TrackGotenbergRequest(time.Since(start), true, true)
+			}
+		}
+		return fmt.Errorf("health check failed: status code %d", resp.StatusCode)
+	}
+
+	if !shouldSkip {
+		metrics.GotenbergRequestsTotal.WithLabelValues("success").Inc()
+	}
+	return nil
 }

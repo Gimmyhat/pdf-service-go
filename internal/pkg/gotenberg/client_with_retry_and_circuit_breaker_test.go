@@ -20,6 +20,8 @@ func TestClientWithRetryAndCircuitBreaker_ConvertDocxToPDF(t *testing.T) {
 
 	// Создаем клиент с неправильным URL для тестирования retry и circuit breaker
 	client := NewClientWithRetryAndCircuitBreaker("http://invalid-url")
+	handler := &mockStatsHandler{}
+	client.SetHandler(handler)
 
 	// Проверяем начальное состояние
 	if state := client.State(); state != circuitbreaker.StateClosed {
@@ -33,6 +35,9 @@ func TestClientWithRetryAndCircuitBreaker_ConvertDocxToPDF(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error from invalid URL")
 		}
+		if handler.isHealthCheck {
+			t.Error("Expected regular request, got health check")
+		}
 	}
 	duration := time.Since(start)
 
@@ -42,8 +47,7 @@ func TestClientWithRetryAndCircuitBreaker_ConvertDocxToPDF(t *testing.T) {
 	}
 
 	// Проверяем, что время выполнения соответствует ожидаемому количеству retry
-	// для первых нескольких запросов (до открытия Circuit Breaker)
-	expectedMinDuration := 300 * time.Millisecond // 100ms + 200ms для первых двух retry
+	expectedMinDuration := 300 * time.Millisecond
 	if duration < expectedMinDuration {
 		t.Errorf("Expected duration >= %v, got %v", expectedMinDuration, duration)
 	}
@@ -80,6 +84,8 @@ func TestClientWithRetryAndCircuitBreaker_Integration(t *testing.T) {
 
 	// Создаем клиент с реальным URL
 	client := NewClientWithRetryAndCircuitBreaker(gotenbergURL)
+	handler := &mockStatsHandler{}
+	client.SetHandler(handler)
 
 	// Проверяем успешную конвертацию
 	pdf, err := client.ConvertDocxToPDF(docxPath)
@@ -88,6 +94,9 @@ func TestClientWithRetryAndCircuitBreaker_Integration(t *testing.T) {
 	}
 	if len(pdf) == 0 {
 		t.Error("Expected non-empty PDF content")
+	}
+	if handler.isHealthCheck {
+		t.Error("Expected regular request, got health check")
 	}
 
 	// Проверяем, что Circuit Breaker остался закрытым

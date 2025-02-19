@@ -40,14 +40,21 @@ func NewPDFHandler(service pdf.Service) *PDFHandler {
 
 func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 	startTime := time.Now()
-	var err error
+	var docxErr error
+	var gotenbergErr error
 
 	defer func() {
-		h.TrackDocxGeneration(time.Since(startTime), err != nil)
+		// Отслеживаем только генерацию DOCX и конвертацию через Gotenberg
+		if docxErr != nil {
+			h.TrackDocxGeneration(time.Since(startTime), true)
+		}
+		if gotenbergErr != nil {
+			h.TrackGotenbergRequest(time.Since(startTime), true)
+		}
 	}()
 
 	var req pdf.DocxRequest
-	if err = c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Failed to parse request",
 			zap.Error(err),
 			zap.String("content_type", c.GetHeader("Content-Type")),
@@ -65,7 +72,7 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 		return
 	}
 
-	if err = h.validateRequest(&req); err != nil {
+	if err := h.validateRequest(&req); err != nil {
 		logger.Error("Request validation failed", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("validation error: %v", err)})
 		return
@@ -77,10 +84,19 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 	docxDuration := time.Since(docxStartTime)
 
 	if err != nil {
+		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
+			gotenbergErr = err
+		} else {
+			docxErr = err
+		}
 		logger.Error("Failed to generate PDF", zap.Error(err))
 		c.JSON(h.determineErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
+
+	// Успешная генерация
+	h.TrackDocxGeneration(docxDuration, false)
+	h.TrackGotenbergRequest(time.Since(docxStartTime), false)
 
 	// Отслеживаем размер PDF
 	h.TrackPDFFile(int64(len(pdfContent)))

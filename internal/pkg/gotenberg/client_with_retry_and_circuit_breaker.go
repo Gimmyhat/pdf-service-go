@@ -61,6 +61,11 @@ func (c *ClientWithRetryAndCircuitBreaker) ConvertDocxToPDF(docxPath string) ([]
 	var result []byte
 	err := c.retrier.Do(context.Background(), func(ctx context.Context) error {
 		return c.cb.Execute(ctx, func() error {
+			// Сначала выполняем проверку здоровья без отслеживания в статистике
+			if err := c.client.HealthCheck(true); err != nil {
+				return err
+			}
+			// Если проверка здоровья прошла успешно, выполняем конвертацию
 			var err error
 			result, err = c.client.ConvertDocxToPDF(docxPath)
 			return err
@@ -77,4 +82,18 @@ func (c *ClientWithRetryAndCircuitBreaker) State() circuitbreaker.State {
 // IsHealthy возвращает true, если Circuit Breaker в здоровом состоянии
 func (c *ClientWithRetryAndCircuitBreaker) IsHealthy() bool {
 	return c.cb.IsHealthy()
+}
+
+// GetHandler возвращает обработчик статистики из базового клиента
+func (c *ClientWithRetryAndCircuitBreaker) GetHandler() (interface {
+	TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
+}, bool) {
+	return c.client.GetHandler()
+}
+
+// SetHandler устанавливает обработчик статистики для базового клиента
+func (c *ClientWithRetryAndCircuitBreaker) SetHandler(handler interface {
+	TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
+}) {
+	c.client.SetHandler(handler)
 }

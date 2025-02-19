@@ -21,6 +21,11 @@ func NewStatisticsHandler() *StatisticsHandler {
 
 // GetStatistics возвращает текущую статистику
 func (h *StatisticsHandler) GetStatistics(c *gin.Context) {
-	stats := h.stats.GetStatistics()
+	period := c.DefaultQuery("period", "all")
+	stats, err := h.stats.GetStatisticsForPeriod(period)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, stats)
 }

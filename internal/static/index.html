@@ -15,14 +15,30 @@
             height: 300px;
             width: 100%;
         }
+        .period-selector {
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
     <div class="container mt-4">
-        <h1 class="mb-4">PDF Service Statistics</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>PDF Service Statistics</h1>
+            <div class="period-selector">
+                <select class="form-select" id="periodSelect" onchange="updateStats()">
+                    <option value="day">Last 24 Hours</option>
+                    <option value="week">Last Week</option>
+                    <option value="month">Last Month</option>
+                    <option value="all" selected>All Time</option>
+                </select>
+            </div>
+        </div>
         
-        <!-- Summary Cards -->
+        <!-- Request Stats -->
         <div class="row mb-4">
+            <div class="col-12">
+                <h2>Request Statistics</h2>
+            </div>
             <div class="col-md-3">
                 <div class="card">
                     <div class="card-body">
@@ -57,7 +73,116 @@
             </div>
         </div>
 
-        <!-- Charts Row 1 -->
+        <!-- DOCX Stats -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2>DOCX Generation Statistics</h2>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Generations</h5>
+                        <p class="card-text" id="docxTotal">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Error Generations</h5>
+                        <p class="card-text" id="docxErrors">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Average Duration</h5>
+                        <p class="card-text" id="docxAvgDuration">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Last Generation</h5>
+                        <p class="card-text" id="docxLastGeneration">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gotenberg Stats -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2>Gotenberg Statistics</h2>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Requests</h5>
+                        <p class="card-text" id="gotenbergTotal">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Error Requests</h5>
+                        <p class="card-text" id="gotenbergErrors">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Average Duration</h5>
+                        <p class="card-text" id="gotenbergAvgDuration">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Last Request</h5>
+                        <p class="card-text" id="gotenbergLastRequest">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PDF Stats -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2>PDF Statistics</h2>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Files</h5>
+                        <p class="card-text" id="pdfTotal">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Average Size</h5>
+                        <p class="card-text" id="pdfAvgSize">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Last Processed</h5>
+                        <p class="card-text" id="pdfLastProcessed">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
         <div class="row mb-4">
             <div class="col-md-6">
                 <div class="card">
@@ -81,19 +206,28 @@
             </div>
         </div>
 
-        <!-- Charts Row 2 -->
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">DOCX Statistics</h5>
+                        <h5 class="card-title">DOCX Generation Status</h5>
                         <div class="chart-container">
                             <canvas id="docxChart"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Gotenberg Status</h5>
+                        <div class="chart-container">
+                            <canvas id="gotenbergChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title">PDF Size Distribution</h5>

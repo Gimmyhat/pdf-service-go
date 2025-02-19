@@ -58,6 +58,11 @@ func NewClientWithCircuitBreaker(baseURL string) *ClientWithCircuitBreaker {
 func (c *ClientWithCircuitBreaker) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 	var result []byte
 	err := c.cb.Execute(context.Background(), func() error {
+		// Сначала выполняем проверку здоровья
+		if err := c.client.HealthCheck(); err != nil {
+			return err
+		}
+		// Если проверка здоровья прошла успешно, выполняем конвертацию
 		var err error
 		result, err = c.client.ConvertDocxToPDF(docxPath)
 		return err
@@ -77,14 +82,14 @@ func (c *ClientWithCircuitBreaker) IsHealthy() bool {
 
 // GetHandler возвращает обработчик статистики из базового клиента
 func (c *ClientWithCircuitBreaker) GetHandler() (interface {
-	TrackGotenbergRequest(duration time.Duration, hasError bool)
+	TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
 }, bool) {
 	return c.client.GetHandler()
 }
 
 // SetHandler устанавливает обработчик статистики для базового клиента
 func (c *ClientWithCircuitBreaker) SetHandler(handler interface {
-	TrackGotenbergRequest(duration time.Duration, hasError bool)
+	TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool)
 }) {
 	c.client.SetHandler(handler)
 }

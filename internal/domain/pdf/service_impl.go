@@ -27,8 +27,10 @@ type StatsHandler struct {
 	stats *statistics.Statistics
 }
 
-func (h *StatsHandler) TrackGotenbergRequest(duration time.Duration, hasError bool) {
-	h.stats.TrackGotenbergRequest(duration, hasError)
+func (h *StatsHandler) TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool) {
+	if !isHealthCheck {
+		h.stats.TrackGotenberg(duration, hasError)
+	}
 }
 
 func NewService(gotenbergURL string) Service {
@@ -141,14 +143,10 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	if err != nil {
 		log.Error("Failed to convert to PDF", zap.Error(err))
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
-		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to convert to PDF: %w", err)
 	}
 
 	// После получения ответа от Gotenberg
-	metrics.GotenbergRequestDuration.WithLabelValues("convert").Observe(pdfConversionTime.Seconds())
-	metrics.GotenbergRequestsTotal.WithLabelValues("success").Inc()
-
 	log.Info("PDF conversion completed",
 		zap.Float64("docx_generation_seconds", docxGenerationTime.Seconds()),
 		zap.Float64("pdf_conversion_seconds", pdfConversionTime.Seconds()),

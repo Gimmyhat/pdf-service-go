@@ -11,165 +11,150 @@ var (
 	once     sync.Once
 )
 
+// New создает новый экземпляр DB
+func New(cfg Config) (DB, error) {
+	return NewPostgresDB(cfg.Host, cfg.Port, cfg.DBName, cfg.User, cfg.Password)
+}
+
+// NewStatistics создает новый экземпляр Statistics
+func NewStatistics(db DB) *Statistics {
+	return &Statistics{db: db}
+}
+
 // GetInstance возвращает синглтон Statistics
 func GetInstance() *Statistics {
-	once.Do(func() {
-		instance = &Statistics{
-			Requests: RequestStats{
-				RequestsByDay:  make(map[time.Weekday]uint64),
-				RequestsByHour: make(map[int]uint64),
-			},
-		}
-	})
 	return instance
 }
 
-// TrackRequest регистрирует новый запрос
-func (s *Statistics) TrackRequest(duration time.Duration, success bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Initialize инициализирует синглтон Statistics
+func Initialize(cfg Config) error {
+	var err error
+	once.Do(func() {
+		var db DB
+		db, err = New(cfg)
+		if err != nil {
+			return
+		}
+		instance = NewStatistics(db)
+	})
+	return err
+}
 
+// TrackRequest записывает информацию о запросе
+func (s *Statistics) TrackRequest(path, method string, duration time.Duration, success bool) error {
+	return s.db.LogRequest(time.Now(), path, method, duration, success)
+}
+
+// TrackDocx записывает информацию о генерации DOCX
+func (s *Statistics) TrackDocx(duration time.Duration, hasError bool) error {
+	return s.db.LogDocx(time.Now(), duration, hasError)
+}
+
+// TrackGotenberg записывает информацию о запросе к Gotenberg
+func (s *Statistics) TrackGotenberg(duration time.Duration, hasError bool) error {
+	return s.db.LogGotenberg(time.Now(), duration, hasError)
+}
+
+// TrackPDF записывает информацию о PDF файле
+func (s *Statistics) TrackPDF(size int64) error {
+	return s.db.LogPDF(time.Now(), size)
+}
+
+// GetStatistics возвращает статистику за указанный период
+func (s *Statistics) GetStatistics(since time.Time) (*Stats, error) {
+	return s.db.GetStatistics(since)
+}
+
+// Close закрывает соединение с базой данных
+func (s *Statistics) Close() error {
+	return s.db.Close()
+}
+
+// GetStatisticsForPeriod возвращает статистику за указанный период в формате для API
+func (s *Statistics) GetStatisticsForPeriod(period string) (StatisticsResponse, error) {
+	var since time.Time
 	now := time.Now()
-	s.Requests.TotalRequests++
-	if success {
-		s.Requests.SuccessRequests++
-	} else {
-		s.Requests.FailedRequests++
+
+	// Определяем период
+	switch period {
+	case "day":
+		since = now.Add(-24 * time.Hour)
+	case "week":
+		since = now.Add(-7 * 24 * time.Hour)
+	case "month":
+		since = now.Add(-30 * 24 * time.Hour)
+	default:
+		// Для "all" или неизвестного периода берем всю статистику
+		since = time.Time{} // Нулевое время = начало времен
 	}
 
-	// Обновляем длительность
-	s.Requests.TotalDuration += duration
-	if s.Requests.MinDuration == 0 || duration < s.Requests.MinDuration {
-		s.Requests.MinDuration = duration
+	stats, err := s.db.GetStatistics(since)
+	if err != nil {
+		return StatisticsResponse{}, fmt.Errorf("failed to get statistics: %w", err)
 	}
-	if duration > s.Requests.MaxDuration {
-		s.Requests.MaxDuration = duration
-	}
-
-	// Обновляем распределение по дням недели и часам
-	s.Requests.RequestsByDay[now.Weekday()]++
-	s.Requests.RequestsByHour[now.Hour()]++
-	s.Requests.LastUpdated = now
-}
-
-// TrackDocxGeneration регистрирует генерацию DOCX
-func (s *Statistics) TrackDocxGeneration(duration time.Duration, hasError bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.Docx.TotalGenerations++
-	if hasError {
-		s.Docx.ErrorGenerations++
-	}
-
-	s.Docx.TotalDuration += duration
-	if s.Docx.MinDuration == 0 || duration < s.Docx.MinDuration {
-		s.Docx.MinDuration = duration
-	}
-	if duration > s.Docx.MaxDuration {
-		s.Docx.MaxDuration = duration
-	}
-	s.Docx.LastGenerationTime = time.Now()
-}
-
-// TrackGotenbergRequest регистрирует запрос к Gotenberg
-func (s *Statistics) TrackGotenbergRequest(duration time.Duration, hasError bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.Gotenberg.TotalRequests++
-	if hasError {
-		s.Gotenberg.ErrorRequests++
-	}
-
-	s.Gotenberg.TotalDuration += duration
-	if s.Gotenberg.MinDuration == 0 || duration < s.Gotenberg.MinDuration {
-		s.Gotenberg.MinDuration = duration
-	}
-	if duration > s.Gotenberg.MaxDuration {
-		s.Gotenberg.MaxDuration = duration
-	}
-	s.Gotenberg.LastRequestTime = time.Now()
-}
-
-// TrackPDFFile регистрирует информацию о PDF файле
-func (s *Statistics) TrackPDFFile(size int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.PDF.TotalFiles++
-	s.PDF.TotalSize += size
-	if s.PDF.MinSize == 0 || size < s.PDF.MinSize {
-		s.PDF.MinSize = size
-	}
-	if size > s.PDF.MaxSize {
-		s.PDF.MaxSize = size
-	}
-	s.PDF.AverageSize = float64(s.PDF.TotalSize) / float64(s.PDF.TotalFiles)
-	s.PDF.LastProcessedTime = time.Now()
-}
-
-// GetStatistics возвращает текущую статистику в формате для API
-func (s *Statistics) GetStatistics() StatisticsResponse {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var response StatisticsResponse
 
 	// Заполняем статистику запросов
-	response.Requests.Total = s.Requests.TotalRequests
-	response.Requests.Success = s.Requests.SuccessRequests
-	response.Requests.Failed = s.Requests.FailedRequests
+	response.Requests.Total = stats.Requests.TotalRequests
+	response.Requests.Success = stats.Requests.SuccessRequests
+	response.Requests.Failed = stats.Requests.FailedRequests
 
-	if s.Requests.TotalRequests > 0 {
-		avgDuration := s.Requests.TotalDuration / time.Duration(s.Requests.TotalRequests)
+	if stats.Requests.TotalRequests > 0 {
+		avgDuration := stats.Requests.TotalDuration / time.Duration(stats.Requests.TotalRequests)
 		response.Requests.AverageDuration = avgDuration.String()
+		response.Requests.MinDuration = stats.Requests.MinDuration.String()
+		response.Requests.MaxDuration = stats.Requests.MaxDuration.String()
 	}
-	response.Requests.MinDuration = s.Requests.MinDuration.String()
-	response.Requests.MaxDuration = s.Requests.MaxDuration.String()
+
+	// Заполняем статистику DOCX
+	response.Docx.TotalGenerations = stats.Docx.TotalGenerations
+	response.Docx.ErrorGenerations = stats.Docx.ErrorGenerations
+	if stats.Docx.TotalGenerations > 0 {
+		avgDuration := stats.Docx.TotalDuration / time.Duration(stats.Docx.TotalGenerations)
+		response.Docx.AverageDuration = avgDuration.String()
+		response.Docx.MinDuration = stats.Docx.MinDuration.String()
+		response.Docx.MaxDuration = stats.Docx.MaxDuration.String()
+	}
+	response.Docx.LastGenerationTime = stats.Docx.LastGenerationTime
+
+	// Заполняем статистику Gotenberg
+	response.Gotenberg.TotalRequests = stats.Gotenberg.TotalRequests
+	response.Gotenberg.ErrorRequests = stats.Gotenberg.ErrorRequests
+	if stats.Gotenberg.TotalRequests > 0 {
+		avgDuration := stats.Gotenberg.TotalDuration / time.Duration(stats.Gotenberg.TotalRequests)
+		response.Gotenberg.AverageDuration = avgDuration.String()
+		response.Gotenberg.MinDuration = stats.Gotenberg.MinDuration.String()
+		response.Gotenberg.MaxDuration = stats.Gotenberg.MaxDuration.String()
+	}
+	response.Gotenberg.LastRequestTime = stats.Gotenberg.LastRequestTime
+
+	// Заполняем статистику PDF
+	response.PDF.TotalFiles = stats.PDF.TotalFiles
+	if stats.PDF.TotalFiles > 0 {
+		response.PDF.TotalSize = formatBytes(stats.PDF.TotalSize)
+		response.PDF.MinSize = formatBytes(stats.PDF.MinSize)
+		response.PDF.MaxSize = formatBytes(stats.PDF.MaxSize)
+		response.PDF.AverageSize = formatBytes(int64(stats.PDF.AverageSize))
+	}
+	response.PDF.LastProcessedTime = stats.PDF.LastProcessedTime
 
 	// Конвертируем дни недели в строки
 	response.Requests.ByDayOfWeek = make(map[string]uint64)
-	for day, count := range s.Requests.RequestsByDay {
-		response.Requests.ByDayOfWeek[day.String()] = count
+	weekdayNames := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+	for day, count := range stats.Requests.RequestsByDay {
+		response.Requests.ByDayOfWeek[weekdayNames[day]] = count
 	}
 
 	// Конвертируем часы в строки
 	response.Requests.ByHourOfDay = make(map[string]uint64)
-	for hour, count := range s.Requests.RequestsByHour {
+	for hour, count := range stats.Requests.RequestsByHour {
 		response.Requests.ByHourOfDay[fmt.Sprintf("%02d:00", hour)] = count
 	}
 
-	// Заполняем статистику DOCX
-	response.Docx.TotalGenerations = s.Docx.TotalGenerations
-	response.Docx.ErrorGenerations = s.Docx.ErrorGenerations
-	if s.Docx.TotalGenerations > 0 {
-		avgDuration := s.Docx.TotalDuration / time.Duration(s.Docx.TotalGenerations)
-		response.Docx.AverageDuration = avgDuration.String()
-	}
-	response.Docx.MinDuration = s.Docx.MinDuration.String()
-	response.Docx.MaxDuration = s.Docx.MaxDuration.String()
+	response.LastUpdated = stats.Requests.LastUpdated
 
-	// Заполняем статистику Gotenberg
-	response.Gotenberg.TotalRequests = s.Gotenberg.TotalRequests
-	response.Gotenberg.ErrorRequests = s.Gotenberg.ErrorRequests
-	if s.Gotenberg.TotalRequests > 0 {
-		avgDuration := s.Gotenberg.TotalDuration / time.Duration(s.Gotenberg.TotalRequests)
-		response.Gotenberg.AverageDuration = avgDuration.String()
-	}
-	response.Gotenberg.MinDuration = s.Gotenberg.MinDuration.String()
-	response.Gotenberg.MaxDuration = s.Gotenberg.MaxDuration.String()
-
-	// Заполняем статистику PDF
-	response.PDF.TotalFiles = s.PDF.TotalFiles
-	response.PDF.TotalSize = formatBytes(s.PDF.TotalSize)
-	response.PDF.MinSize = formatBytes(s.PDF.MinSize)
-	response.PDF.MaxSize = formatBytes(s.PDF.MaxSize)
-	response.PDF.AverageSize = formatBytes(int64(s.PDF.AverageSize))
-
-	response.LastUpdated = s.Requests.LastUpdated
-
-	return response
+	return response, nil
 }
 
 // formatBytes форматирует размер в байтах в человекочитаемый формат

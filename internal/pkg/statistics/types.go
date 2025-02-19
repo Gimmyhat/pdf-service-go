@@ -48,6 +48,14 @@ type PDFStats struct {
 	LastProcessedTime time.Time
 }
 
+// Stats представляет статистику сервиса
+type Stats struct {
+	Requests  RequestStats
+	Docx      DocxStats
+	Gotenberg GotenbergStats
+	PDF       PDFStats
+}
+
 // Statistics представляет собой потокобезопасное хранилище статистики
 type Statistics struct {
 	mu        sync.RWMutex
@@ -55,6 +63,45 @@ type Statistics struct {
 	Docx      DocxStats
 	Gotenberg GotenbergStats
 	PDF       PDFStats
+	db        DB
+}
+
+// DBConfig представляет интерфейс для работы с базой данных
+type DBConfig struct {
+	Path string
+}
+
+// RequestLog представляет запись о запросе в БД
+type RequestLog struct {
+	ID        int64     `db:"id"`
+	Timestamp time.Time `db:"timestamp"`
+	Path      string    `db:"path"`
+	Method    string    `db:"method"`
+	Duration  int64     `db:"duration_ns"`
+	Success   bool      `db:"success"`
+}
+
+// DocxLog представляет запись о генерации DOCX в БД
+type DocxLog struct {
+	ID        int64     `db:"id"`
+	Timestamp time.Time `db:"timestamp"`
+	Duration  int64     `db:"duration_ns"`
+	HasError  bool      `db:"has_error"`
+}
+
+// GotenbergLog представляет запись о запросе к Gotenberg в БД
+type GotenbergLog struct {
+	ID        int64     `db:"id"`
+	Timestamp time.Time `db:"timestamp"`
+	Duration  int64     `db:"duration_ns"`
+	HasError  bool      `db:"has_error"`
+}
+
+// PDFLog представляет запись о PDF файле в БД
+type PDFLog struct {
+	ID        int64     `db:"id"`
+	Timestamp time.Time `db:"timestamp"`
+	Size      int64     `db:"size_bytes"`
 }
 
 // StatisticsResponse представляет собой структуру ответа API
@@ -71,28 +118,40 @@ type StatisticsResponse struct {
 	} `json:"requests"`
 
 	Docx struct {
-		TotalGenerations uint64 `json:"total_generations"`
-		ErrorGenerations uint64 `json:"error_generations"`
-		AverageDuration  string `json:"average_duration"`
-		MinDuration      string `json:"min_duration"`
-		MaxDuration      string `json:"max_duration"`
+		TotalGenerations   uint64    `json:"total_generations"`
+		ErrorGenerations   uint64    `json:"error_generations"`
+		AverageDuration    string    `json:"average_duration"`
+		MinDuration        string    `json:"min_duration"`
+		MaxDuration        string    `json:"max_duration"`
+		LastGenerationTime time.Time `json:"last_generation_time"`
 	} `json:"docx"`
 
 	Gotenberg struct {
-		TotalRequests   uint64 `json:"total_requests"`
-		ErrorRequests   uint64 `json:"error_requests"`
-		AverageDuration string `json:"average_duration"`
-		MinDuration     string `json:"min_duration"`
-		MaxDuration     string `json:"max_duration"`
+		TotalRequests   uint64    `json:"total_requests"`
+		ErrorRequests   uint64    `json:"error_requests"`
+		AverageDuration string    `json:"average_duration"`
+		MinDuration     string    `json:"min_duration"`
+		MaxDuration     string    `json:"max_duration"`
+		LastRequestTime time.Time `json:"last_request_time"`
 	} `json:"gotenberg"`
 
 	PDF struct {
-		TotalFiles  uint64 `json:"total_files"`
-		TotalSize   string `json:"total_size"`
-		MinSize     string `json:"min_size"`
-		MaxSize     string `json:"max_size"`
-		AverageSize string `json:"average_size"`
+		TotalFiles        uint64    `json:"total_files"`
+		TotalSize         string    `json:"total_size"`
+		MinSize           string    `json:"min_size"`
+		MaxSize           string    `json:"max_size"`
+		AverageSize       string    `json:"average_size"`
+		LastProcessedTime time.Time `json:"last_processed_time"`
 	} `json:"pdf"`
 
 	LastUpdated time.Time `json:"last_updated"`
+}
+
+// Config содержит конфигурацию для подключения к базе данных
+type Config struct {
+	Host     string
+	Port     string
+	DBName   string
+	User     string
+	Password string
 }

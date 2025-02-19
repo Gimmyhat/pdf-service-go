@@ -13,20 +13,20 @@ func (h *PDFHandler) AddStatisticsTracking() {
 // TrackDocxGeneration отслеживает статистику генерации DOCX
 func (h *PDFHandler) TrackDocxGeneration(duration time.Duration, hasError bool) {
 	if h.stats != nil {
-		h.stats.TrackDocxGeneration(duration, hasError)
+		h.stats.TrackDocx(duration, hasError)
 	}
 }
 
 // TrackPDFFile отслеживает статистику PDF файла
 func (h *PDFHandler) TrackPDFFile(size int64) {
 	if h.stats != nil {
-		h.stats.TrackPDFFile(size)
+		h.stats.TrackPDF(size)
 	}
 }
 
 // TrackGotenbergRequest отслеживает статистику запроса к Gotenberg
 func (h *PDFHandler) TrackGotenbergRequest(duration time.Duration, hasError bool) {
 	if h.stats != nil {
-		h.stats.TrackGotenbergRequest(duration, hasError)
+		h.stats.TrackGotenberg(duration, hasError)
 	}
 }

@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-pdf-service-postgres-config
+  namespace: print-serv
+data:
+  POSTGRES_DB: pdf_service_stats
+  POSTGRES_USER: pdf_service
+  POSTGRES_PASSWORD: pdf_service_pass
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nas-pdf-service-postgres-pvc
+  namespace: print-serv
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-pdf-service-postgres
+  namespace: print-serv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nas-pdf-service-postgres
+  template:
+    metadata:
+      labels:
+        app: nas-pdf-service-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        envFrom:
+        - configMapRef:
+            name: nas-pdf-service-postgres-config
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "pdf_service"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "pdf_service"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: nas-pdf-service-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-pdf-service-postgres
+  namespace: print-serv
+spec:
+  selector:
+    app: nas-pdf-service-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432 

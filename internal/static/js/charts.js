@@ -29,7 +29,7 @@ function createGradient(color) {
 }
 
 // Charts instances
-let weekdayChart, hourChart, docxChart, pdfSizeChart;
+let weekdayChart, hourChart, docxChart, pdfSizeChart, gotenbergChart;
 
 // Initialize charts
 function initCharts() {
@@ -37,7 +37,7 @@ function initCharts() {
     weekdayChart = new Chart(document.getElementById('weekdayChart'), {
         type: 'bar',
         data: {
-            labels: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+            labels: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
             datasets: [{
                 label: 'Requests',
                 data: Array(7).fill(0),
@@ -85,6 +85,46 @@ function initCharts() {
                 data: [0, 0],
                 backgroundColor: [colors.success, colors.danger]
             }]
+        },
+        options: {
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Gotenberg chart
+    gotenbergChart = new Chart(document.getElementById('gotenbergChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Success', 'Failed'],
+            datasets: [{
+                data: [0, 0],
+                backgroundColor: [colors.success, colors.danger]
+            }]
+        },
+        options: {
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
         }
     });
 
@@ -92,11 +132,11 @@ function initCharts() {
     pdfSizeChart = new Chart(document.getElementById('pdfSizeChart'), {
         type: 'bar',
         data: {
-            labels: ['0-1MB', '1-5MB', '5-10MB', '10-20MB', '20MB+'],
+            labels: ['Min', 'Average', 'Max'],
             datasets: [{
-                label: 'Files',
-                data: Array(5).fill(0),
-                backgroundColor: gradients.warning
+                label: 'File Size',
+                data: [0, 0, 0],
+                backgroundColor: [colors.success, colors.primary, colors.warning]
             }]
         },
         options: {
@@ -112,73 +152,97 @@ function initCharts() {
 // Update statistics
 async function updateStats() {
     try {
-        const response = await fetch('/api/v1/statistics');
+        const period = document.getElementById('periodSelect').value;
+        let url = '/api/v1/statistics';
+        
+        if (period !== 'all') {
+            url += `?period=${period}`;
+        }
+
+        const response = await fetch(url);
         const data = await response.json();
 
         // Update summary cards
-        document.getElementById('totalRequests').textContent = data.requests.total;
-        document.getElementById('successfulRequests').textContent = data.requests.success;
-        document.getElementById('failedRequests').textContent = data.requests.failed;
-        document.getElementById('avgDuration').textContent = data.requests.average_duration;
+        document.getElementById('totalRequests').textContent = data.requests.total || '0';
+        document.getElementById('successfulRequests').textContent = data.requests.success || '0';
+        document.getElementById('failedRequests').textContent = data.requests.failed || '0';
+        document.getElementById('avgDuration').textContent = data.requests.average_duration || '0s';
 
-        // Convert day of week data
-        const weekdayData = [0, 0, 0, 0, 0, 0, 0];
-        Object.entries(data.requests.by_day_of_week).forEach(([day, count]) => {
-            const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(day);
-            if (dayIndex !== -1) {
-                weekdayData[dayIndex] = count;
-            }
-        });
+        // Update DOCX stats
+        document.getElementById('docxTotal').textContent = data.docx.total_generations || '0';
+        document.getElementById('docxErrors').textContent = data.docx.error_generations || '0';
+        document.getElementById('docxAvgDuration').textContent = data.docx.average_duration || '0s';
+        document.getElementById('docxLastGeneration').textContent = data.docx.last_generation_time ? new Date(data.docx.last_generation_time).toLocaleString() : 'N/A';
 
-        // Convert hour data
-        const hourData = Array(24).fill(0);
-        Object.entries(data.requests.by_hour_of_day).forEach(([hour, count]) => {
-            const hourIndex = parseInt(hour.split(':')[0]);
-            if (!isNaN(hourIndex) && hourIndex >= 0 && hourIndex < 24) {
-                hourData[hourIndex] = count;
-            }
-        });
+        // Update Gotenberg stats
+        document.getElementById('gotenbergTotal').textContent = data.gotenberg.total_requests || '0';
+        document.getElementById('gotenbergErrors').textContent = data.gotenberg.error_requests || '0';
+        document.getElementById('gotenbergAvgDuration').textContent = data.gotenberg.average_duration || '0s';
+        document.getElementById('gotenbergLastRequest').textContent = data.gotenberg.last_request_time ? new Date(data.gotenberg.last_request_time).toLocaleString() : 'N/A';
+
+        // Update PDF stats
+        document.getElementById('pdfTotal').textContent = data.pdf.total_files || '0';
+        document.getElementById('pdfAvgSize').textContent = data.pdf.average_size || '0 B';
+        document.getElementById('pdfLastProcessed').textContent = data.pdf.last_processed_time ? new Date(data.pdf.last_processed_time).toLocaleString() : 'N/A';
 
         // Update charts
-        updateWeekdayChart(weekdayData);
-        updateHourChart(hourData);
-        updateDocxChart(data.docx.total_generations - data.docx.error_generations, data.docx.error_generations);
-
-        // Convert PDF size data
-        const pdfSizeData = [0, 0, 0, 0, 0]; // 0-1MB, 1-5MB, 5-10MB, 10-20MB, 20MB+
-        if (data.pdf.total_files > 0) {
-            const sizeInMB = parseFloat(data.pdf.average_size.split(' ')[0]) / 1024; // Convert KB to MB
-            const sizeIndex = sizeInMB <= 1 ? 0 :
-                            sizeInMB <= 5 ? 1 :
-                            sizeInMB <= 10 ? 2 :
-                            sizeInMB <= 20 ? 3 : 4;
-            pdfSizeData[sizeIndex] = data.pdf.total_files;
+        if (weekdayChart) {
+            updateWeekdayChart(data.requests.by_day_of_week || {});
         }
-        updatePdfSizeChart(pdfSizeData);
+        if (hourChart) {
+            updateHourChart(data.requests.by_hour_of_day || {});
+        }
+        if (docxChart) {
+            updateDocxChart(
+                (data.docx.total_generations || 0) - (data.docx.error_generations || 0),
+                data.docx.error_generations || 0
+            );
+        }
+        if (gotenbergChart) {
+            updateGotenbergChart(
+                (data.gotenberg.total_requests || 0) - (data.gotenberg.error_requests || 0),
+                data.gotenberg.error_requests || 0
+            );
+        }
+        if (pdfSizeChart) {
+            updatePdfSizeChart([
+                parseSize(data.pdf.min_size || '0 B'),
+                parseSize(data.pdf.average_size || '0 B'),
+                parseSize(data.pdf.max_size || '0 B')
+            ]);
+        }
 
     } catch (error) {
         console.error('Failed to fetch statistics:', error);
     }
 }
 
-// Format duration in milliseconds to human-readable format
-function formatDuration(ms) {
-    if (ms < 1000) return ms + 'ms';
-    const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return seconds + 's';
-    const minutes = Math.floor(seconds / 60);
-    return minutes + 'm ' + (seconds % 60) + 's';
+// Parse size string to bytes
+function parseSize(sizeStr) {
+    const units = {
+        'B': 1,
+        'KB': 1024,
+        'MB': 1024 * 1024,
+        'GB': 1024 * 1024 * 1024
+    };
+    const matches = sizeStr.match(/^([\d.]+)\s*([A-Z]+)$/);
+    if (matches) {
+        const value = parseFloat(matches[1]);
+        const unit = matches[2];
+        return value * (units[unit] || 1);
+    }
+    return 0;
 }
 
 // Update weekday chart
 function updateWeekdayChart(data) {
-    weekdayChart.data.datasets[0].data = data;
+    weekdayChart.data.datasets[0].data = Object.values(data);
     weekdayChart.update();
 }
 
 // Update hour chart
 function updateHourChart(data) {
-    hourChart.data.datasets[0].data = data;
+    hourChart.data.datasets[0].data = Object.values(data);
     hourChart.update();
 }
 
@@ -186,6 +250,12 @@ function updateHourChart(data) {
 function updateDocxChart(success, failed) {
     docxChart.data.datasets[0].data = [success, failed];
     docxChart.update();
+}
+
+// Update Gotenberg chart
+function updateGotenbergChart(success, failed) {
+    gotenbergChart.data.datasets[0].data = [success, failed];
+    gotenbergChart.update();
 }
 
 // Update PDF size chart

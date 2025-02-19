@@ -1,15 +1,20 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-bullseye AS builder
 
 WORKDIR /app
 
-# Устанавливаем git
-RUN apk add --no-cache git
+# Устанавливаем git и SQLite
+RUN apt-get update && apt-get install -y \
+    git \
+    sqlite3 \
+    libsqlite3-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux go build -o main cmd/api/main.go
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o main cmd/api/main.go
 
-FROM pypy:3.9-slim
+FROM pypy:3.9-slim-bullseye
 
 WORKDIR /app
 
@@ -30,8 +35,13 @@ RUN apt-get update && \
     tcl-dev \
     libharfbuzz-dev \
     libfribidi-dev \
+    sqlite3 \
+    libsqlite3-0 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Создаем директорию для базы данных
+RUN mkdir -p /app/data && chown -R nobody:nogroup /app/data
 
 # Копируем requirements-pypy.txt и устанавливаем зависимости Python
 COPY --from=builder /app/requirements-pypy.txt .
@@ -47,6 +57,12 @@ COPY --from=builder /app/internal/static ./internal/static
 ENV GIN_MODE=release \
     LOG_LEVEL=info \
     PYTHON_IMPLEMENTATION=pypy3
+
+# Делаем исполняемый файл запускаемым
+RUN chmod +x /app/main
+
+# Переключаемся на непривилегированного пользователя
+USER nobody
 
 EXPOSE 8080
 
