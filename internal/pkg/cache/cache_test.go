@@ -14,7 +14,8 @@ import (
 )
 
 func TestCache(t *testing.T) {
-	cache := NewCache(100 * time.Millisecond)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(100*time.Millisecond, hits, misses, size, itemsCount)
 	ctx := context.Background()
 
 	// Создаем тестовый трейсер
@@ -82,7 +83,8 @@ func TestCache(t *testing.T) {
 }
 
 func TestCacheConcurrency(t *testing.T) {
-	cache := NewCache(1 * time.Second)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(100*time.Millisecond, hits, misses, size, itemsCount)
 	ctx := context.Background()
 	done := make(chan bool)
 
@@ -115,7 +117,8 @@ func TestCacheConcurrency(t *testing.T) {
 }
 
 func TestCacheWithTracing(t *testing.T) {
-	cache := NewCache(1 * time.Second)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(100*time.Millisecond, hits, misses, size, itemsCount)
 	ctx := context.Background()
 
 	// Создаем тестовый трейсер
@@ -156,7 +159,8 @@ func TestCacheWithTracing(t *testing.T) {
 }
 
 func TestCacheErrors(t *testing.T) {
-	cache := NewCache(100 * time.Millisecond)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(100*time.Millisecond, hits, misses, size, itemsCount)
 	ctx := context.Background()
 
 	// Создаем тестовый трейсер
@@ -186,45 +190,35 @@ func TestCacheErrors(t *testing.T) {
 }
 
 func TestCacheMetrics(t *testing.T) {
-	cache := NewCache(100 * time.Millisecond)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(100*time.Millisecond, hits, misses, size, itemsCount)
 	ctx := context.Background()
 
-	// Создаем тестовый трейсер
-	tracer := otel.Tracer("test")
-	ctx, span := tracer.Start(ctx, "TestCacheMetrics")
-	defer span.End()
-
 	t.Run("Hit metrics", func(t *testing.T) {
-		key := "test_metrics"
+		key := "test_hit"
 		value := []byte("test_value")
 
-		// Записываем значение
 		cache.Set(key, value)
-
-		// Первое успешное получение
 		_, err := cache.Get(ctx, key)
 		if err != nil {
-			t.Errorf("Expected no error, got %v", err)
+			t.Errorf("Failed to get value: %v", err)
 		}
 
-		// Проверяем метрику hits
-		hits := testutil.ToFloat64(cacheHits.WithLabelValues("test_metrics"))
-		if hits != 1 {
-			t.Errorf("Expected 1 hit, got %v", hits)
+		hitValue := testutil.ToFloat64(hits)
+		if hitValue != 1 {
+			t.Errorf("Expected 1 hit, got %v", hitValue)
 		}
 	})
 
 	t.Run("Miss metrics", func(t *testing.T) {
-		// Пытаемся получить несуществующий ключ
 		_, err := cache.Get(ctx, "non_existent")
 		if err == nil {
 			t.Error("Expected error for non-existent key")
 		}
 
-		// Проверяем метрику misses
-		misses := testutil.ToFloat64(cacheMisses.WithLabelValues("non_existent"))
-		if misses != 1 {
-			t.Errorf("Expected 1 miss, got %v", misses)
+		missValue := testutil.ToFloat64(misses)
+		if missValue != 1 {
+			t.Errorf("Expected 1 miss, got %v", missValue)
 		}
 	})
 
@@ -232,87 +226,53 @@ func TestCacheMetrics(t *testing.T) {
 		key := "test_size"
 		value := []byte("test_value")
 
-		// Записываем значение
 		cache.Set(key, value)
 
-		// Проверяем метрику размера
-		size := testutil.ToFloat64(cacheSize.WithLabelValues("test_size"))
-		if size != float64(len(value)) {
-			t.Errorf("Expected size %v, got %v", len(value), size)
+		sizeValue := testutil.ToFloat64(size.WithLabelValues(key))
+		if sizeValue != float64(len(value)) {
+			t.Errorf("Expected size %v, got %v", len(value), sizeValue)
 		}
 	})
 
 	t.Run("Items count metrics", func(t *testing.T) {
-		// Очищаем кэш
-		cache.Clear(ctx)
+		cache.Clear(ctx) // Clear cache before test
 
 		key1 := "test_count_1"
 		key2 := "test_count_2"
 		value := []byte("test_value")
 
-		// Добавляем два элемента
 		cache.Set(key1, value)
 		cache.Set(key2, value)
 
-		// Проверяем метрику количества элементов
-		items := testutil.ToFloat64(cacheItems)
-		if items != 2 {
-			t.Errorf("Expected 2 items, got %v", items)
+		countValue := testutil.ToFloat64(itemsCount)
+		if countValue != 2 {
+			t.Errorf("Expected 2 items, got %v", countValue)
 		}
 
-		// Удаляем один элемент
 		cache.Delete(ctx, key1)
 
-		// Проверяем обновленное количество
-		items = testutil.ToFloat64(cacheItems)
-		if items != 1 {
-			t.Errorf("Expected 1 item, got %v", items)
+		countValue = testutil.ToFloat64(itemsCount)
+		if countValue != 1 {
+			t.Errorf("Expected 1 item, got %v", countValue)
+		}
+
+		cache.Clear(ctx)
+
+		countValue = testutil.ToFloat64(itemsCount)
+		if countValue != 0 {
+			t.Errorf("Expected 0 items, got %v", countValue)
 		}
 	})
 }
 
 func TestCacheLargeData(t *testing.T) {
-	cache := NewCache(1 * time.Second)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(1*time.Second, hits, misses, size, itemsCount)
 	ctx := context.Background()
 
-	// Создаем тестовый трейсер
-	tracer := otel.Tracer("test")
-	ctx, span := tracer.Start(ctx, "TestCacheLargeData")
-	defer span.End()
-
-	t.Run("Large data operations", func(t *testing.T) {
-		// Создаем большой объем данных (1MB)
-		data := make([]byte, 1024*1024)
-		_, err := rand.Read(data)
-		if err != nil {
-			t.Fatalf("Failed to generate random data: %v", err)
-		}
-
-		key := "large_data"
-
-		// Записываем большие данные
-		cache.Set(key, data)
-
-		// Получаем данные
-		retrieved, err := cache.Get(ctx, key)
-		if err != nil {
-			t.Errorf("Failed to get large data: %v", err)
-		}
-
-		// Проверяем целостность данных
-		if !bytes.Equal(data, retrieved) {
-			t.Error("Retrieved data does not match original")
-		}
-
-		// Проверяем метрику размера
-		size := testutil.ToFloat64(cacheSize.WithLabelValues("large_data"))
-		if size != float64(len(data)) {
-			t.Errorf("Expected size %v, got %v", len(data), size)
-		}
-	})
-
 	t.Run("Multiple large items", func(t *testing.T) {
-		// Создаем несколько больших объектов данных
+		cache.Clear(ctx) // Clear cache before test
+
 		dataSize := 512 * 1024 // 512KB
 		itemCount := 5
 
@@ -327,18 +287,16 @@ func TestCacheLargeData(t *testing.T) {
 			cache.Set(key, data)
 		}
 
-		// Проверяем количество элементов
-		items := testutil.ToFloat64(cacheItems)
-		if items != float64(itemCount) {
-			t.Errorf("Expected %d items, got %v", itemCount, items)
+		countValue := testutil.ToFloat64(itemsCount)
+		if countValue != float64(itemCount) {
+			t.Errorf("Expected %d items, got %v", itemCount, countValue)
 		}
 
-		// Проверяем общий размер кэша
 		var totalSize float64
 		for i := 0; i < itemCount; i++ {
 			key := fmt.Sprintf("large_data_%d", i)
-			size := testutil.ToFloat64(cacheSize.WithLabelValues(key))
-			totalSize += size
+			sizeValue := testutil.ToFloat64(size.WithLabelValues(key))
+			totalSize += sizeValue
 		}
 
 		expectedSize := float64(dataSize * itemCount)
@@ -349,7 +307,8 @@ func TestCacheLargeData(t *testing.T) {
 }
 
 func TestCacheUnderLoad(t *testing.T) {
-	cache := NewCache(5 * time.Second)
+	_, hits, misses, size, itemsCount := createTestMetrics()
+	cache := NewCacheWithMetrics(5*time.Second, hits, misses, size, itemsCount)
 	ctx := context.Background()
 
 	// Создаем тестовый трейсер

@@ -9,6 +9,7 @@ import (
 
 	"pdf-service-go/internal/pkg/tracing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -18,70 +19,93 @@ type Item struct {
 	Expiration int64
 }
 
-// Cache представляет кэш с поддержкой TTL
-type Cache struct {
-	items sync.Map
-	ttl   time.Duration
-}
-
 // cacheItem представляет элемент кэша
 type cacheItem struct {
 	data       []byte
 	expiration time.Time
 }
 
+func (i *cacheItem) isExpired() bool {
+	return time.Now().After(i.expiration)
+}
+
+// Cache представляет кэш с поддержкой TTL
+type Cache struct {
+	sync.RWMutex
+	items  map[string]*cacheItem
+	ttl    time.Duration
+	hits   prometheus.Gauge
+	misses prometheus.Gauge
+	size   *prometheus.GaugeVec
+	count  prometheus.Gauge
+}
+
 // NewCache создает новый экземпляр кэша
 func NewCache(ttl time.Duration) *Cache {
-	cache := &Cache{
-		ttl: ttl,
+	return NewCacheWithMetrics(ttl, cacheHits, cacheMisses, cacheSize, cacheItemsCount)
+}
+
+func NewCacheWithMetrics(ttl time.Duration, hits prometheus.Gauge, misses prometheus.Gauge, size *prometheus.GaugeVec, count prometheus.Gauge) *Cache {
+	return &Cache{
+		items:  make(map[string]*cacheItem),
+		ttl:    ttl,
+		hits:   hits,
+		misses: misses,
+		size:   size,
+		count:  count,
 	}
-	go cache.startCleanupTimer()
-	return cache
 }
 
 // Set добавляет значение в кэш
 func (c *Cache) Set(key string, value []byte) {
-	c.items.Store(key, Item{
-		Value:      value,
-		Expiration: time.Now().Add(c.ttl).UnixNano(),
-	})
+	c.Lock()
+	defer c.Unlock()
+
+	// If key exists, update size metric
+	if oldItem, exists := c.items[key]; exists {
+		c.size.WithLabelValues(key).Sub(float64(len(oldItem.data)))
+	} else {
+		c.count.Inc()
+	}
+
+	c.items[key] = &cacheItem{
+		data:       value,
+		expiration: time.Now().Add(c.ttl),
+	}
+	c.size.WithLabelValues(key).Add(float64(len(value)))
 }
 
 // Get получает значение из кэша
 func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
-	ctx, span := tracing.StartSpan(ctx, "Cache.Get")
-	defer span.End()
+	c.RLock()
+	item, exists := c.items[key]
+	c.RUnlock()
 
-	span.SetAttributes(attribute.String("cache.key", key))
-
-	item, exists := c.items.Load(key)
 	if !exists {
-		err := fmt.Errorf("cache miss: key %s not found", key)
-		tracing.RecordError(ctx, err)
-		return nil, err
+		c.misses.Inc()
+		return nil, fmt.Errorf("key not found: %s", key)
 	}
 
-	cacheItem := item.(Item)
-	if time.Now().UnixNano() > cacheItem.Expiration {
-		c.items.Delete(key)
-		err := fmt.Errorf("cache miss: key %s expired", key)
-		tracing.RecordError(ctx, err)
-		return nil, err
+	if item.isExpired() {
+		c.Delete(ctx, key)
+		c.misses.Inc()
+		return nil, fmt.Errorf("key expired: %s", key)
 	}
 
-	span.AddEvent("Cache hit")
-	return cacheItem.Value, nil
+	c.hits.Inc()
+	return item.data, nil
 }
 
 // Delete удаляет значение из кэша
 func (c *Cache) Delete(ctx context.Context, key string) {
-	ctx, span := tracing.StartSpan(ctx, "Cache.Delete")
-	defer span.End()
+	c.Lock()
+	defer c.Unlock()
 
-	span.SetAttributes(attribute.String("cache.key", key))
-
-	c.items.Delete(key)
-	span.AddEvent("Cache entry deleted")
+	if item, exists := c.items[key]; exists {
+		c.size.WithLabelValues(key).Sub(float64(len(item.data)))
+		delete(c.items, key)
+		c.count.Dec()
+	}
 }
 
 // startCleanupTimer запускает периодическую очистку устаревших элементов
@@ -89,13 +113,15 @@ func (c *Cache) startCleanupTimer() {
 	ticker := time.NewTicker(c.ttl)
 	for range ticker.C {
 		now := time.Now().UnixNano()
-		c.items.Range(func(key, value interface{}) bool {
-			item := value.(Item)
-			if now > item.Expiration {
-				c.items.Delete(key)
+		c.RLock()
+		for key, item := range c.items {
+			if now > item.expiration.UnixNano() {
+				c.size.WithLabelValues(key).Set(0)
+				c.count.Dec()
+				delete(c.items, key)
 			}
-			return true
-		})
+		}
+		c.RUnlock()
 	}
 }
 
@@ -114,10 +140,10 @@ func (c *Cache) SetFromReader(ctx context.Context, key string, reader io.Reader)
 	}
 
 	// Сохраняем в кэш
-	c.items.Store(key, cacheItem{
+	c.items[key] = &cacheItem{
 		data:       data,
 		expiration: time.Now().Add(c.ttl),
-	})
+	}
 
 	span.AddEvent("Cache updated")
 	return nil
@@ -125,9 +151,22 @@ func (c *Cache) SetFromReader(ctx context.Context, key string, reader io.Reader)
 
 // Clear очищает весь кэш
 func (c *Cache) Clear(ctx context.Context) {
-	ctx, span := tracing.StartSpan(ctx, "Cache.Clear")
-	defer span.End()
+	c.Lock()
+	defer c.Unlock()
 
-	c.items = sync.Map{}
-	span.AddEvent("Cache cleared")
+	for key := range c.items {
+		c.size.WithLabelValues(key).Set(0)
+	}
+	c.items = make(map[string]*cacheItem)
+	c.count.Set(0)
+}
+
+func (c *Cache) isExpired() bool {
+	now := time.Now()
+	for _, item := range c.items {
+		if now.After(item.expiration) {
+			return true
+		}
+	}
+	return false
 }
