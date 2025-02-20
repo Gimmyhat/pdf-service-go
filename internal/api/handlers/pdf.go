@@ -96,7 +96,6 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 
 	// Успешная генерация
 	h.TrackDocxGeneration(docxDuration, false)
-	h.TrackGotenbergRequest(time.Since(docxStartTime), false)
 
 	// Отслеживаем размер PDF
 	h.TrackPDFFile(int64(len(pdfContent)))

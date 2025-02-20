@@ -3,7 +3,8 @@
         check-env get-version status logs \
         check-storage check-test check-prod check-grafana check-prometheus check-jaeger \
         deploy deploy-local deploy-storage \
-        dev run-local port-forward-grafana port-forward-prometheus port-forward-jaeger
+        dev run-local port-forward-grafana port-forward-prometheus port-forward-jaeger \
+        clear-stats
 
 # Основные переменные
 APP_NAME = pdf-service-go
@@ -167,7 +168,6 @@ deploy: check-env
 		fi; \
 	fi; \
 	kubectl config use-context $(CONTEXT); \
-	kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); \
 	kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); \
 	kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); \
@@ -233,4 +233,25 @@ port-forward-prometheus:
 
 port-forward-jaeger:
 	@echo "Setting up port forward for Jaeger UI..."
-	kubectl port-forward -n print-serv svc/nas-jaeger 16686:16686 
+	kubectl port-forward -n print-serv svc/nas-jaeger 16686:16686
+
+# ============================================================================
+# Команды для работы со статистикой
+# ============================================================================
+
+# Очистка статистики
+clear-stats: check-env
+	@echo "Clearing statistics for $(ENV) environment..."
+	@if [ "$(ENV)" = "prod" ]; then \
+		read -p "Are you sure you want to clear PRODUCTION statistics? (y/N) " confirm; \
+		if [ "$$confirm" != "y" ]; then \
+			echo "Operation cancelled."; \
+			exit 1; \
+		fi; \
+	fi
+	kubectl config use-context $(CONTEXT)
+	@echo "Getting PostgreSQL pod name..."
+	@POSTGRES_POD=$$(kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service-postgres -o jsonpath='{.items[0].metadata.name}') && \
+	echo "Clearing statistics tables..." && \
+	kubectl exec -n $(NAMESPACE) $$POSTGRES_POD -- psql -U pdf_service -d pdf_service_stats -c "TRUNCATE TABLE request_logs, docx_logs, gotenberg_logs, pdf_logs;"
+	@echo "Statistics cleared successfully for $(ENV) environment" 

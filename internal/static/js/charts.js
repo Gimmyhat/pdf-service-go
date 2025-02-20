@@ -1,6 +1,8 @@
 // Chart.js configuration
 Chart.defaults.responsive = true;
 Chart.defaults.plugins.legend.position = 'bottom';
+Chart.defaults.plugins.legend.labels.boxWidth = 12;
+Chart.defaults.plugins.legend.labels.padding = 8;
 
 // Color schemes
 const colors = {
@@ -37,9 +39,9 @@ function initCharts() {
     weekdayChart = new Chart(document.getElementById('weekdayChart'), {
         type: 'bar',
         data: {
-            labels: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+            labels: ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'],
             datasets: [{
-                label: 'Requests',
+                label: 'Запросы',
                 data: Array(7).fill(0),
                 backgroundColor: gradients.primary
             }]
@@ -49,7 +51,8 @@ function initCharts() {
                 y: {
                     beginAtZero: true
                 }
-            }
+            },
+            maintainAspectRatio: false
         }
     });
 
@@ -57,9 +60,9 @@ function initCharts() {
     hourChart = new Chart(document.getElementById('hourChart'), {
         type: 'line',
         data: {
-            labels: Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0') + ':00'),
+            labels: Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0')),
             datasets: [{
-                label: 'Requests',
+                label: 'Запросы',
                 data: Array(24).fill(0),
                 borderColor: colors.info,
                 backgroundColor: gradients.info,
@@ -72,7 +75,8 @@ function initCharts() {
                 y: {
                     beginAtZero: true
                 }
-            }
+            },
+            maintainAspectRatio: false
         }
     });
 
@@ -80,7 +84,7 @@ function initCharts() {
     docxChart = new Chart(document.getElementById('docxChart'), {
         type: 'doughnut',
         data: {
-            labels: ['Success', 'Failed'],
+            labels: ['Успешно', 'Ошибки'],
             datasets: [{
                 data: [0, 0],
                 backgroundColor: [colors.success, colors.danger]
@@ -98,7 +102,8 @@ function initCharts() {
                         }
                     }
                 }
-            }
+            },
+            maintainAspectRatio: false
         }
     });
 
@@ -106,7 +111,7 @@ function initCharts() {
     gotenbergChart = new Chart(document.getElementById('gotenbergChart'), {
         type: 'doughnut',
         data: {
-            labels: ['Success', 'Failed'],
+            labels: ['Успешно', 'Ошибки'],
             datasets: [{
                 data: [0, 0],
                 backgroundColor: [colors.success, colors.danger]
@@ -124,7 +129,8 @@ function initCharts() {
                         }
                     }
                 }
-            }
+            },
+            maintainAspectRatio: false
         }
     });
 
@@ -132,9 +138,9 @@ function initCharts() {
     pdfSizeChart = new Chart(document.getElementById('pdfSizeChart'), {
         type: 'bar',
         data: {
-            labels: ['Min', 'Average', 'Max'],
+            labels: ['Мин', 'Средний', 'Макс'],
             datasets: [{
-                label: 'File Size',
+                label: 'Размер',
                 data: [0, 0, 0],
                 backgroundColor: [colors.success, colors.primary, colors.warning]
             }]
@@ -144,8 +150,20 @@ function initCharts() {
                 y: {
                     beginAtZero: true
                 }
-            }
+            },
+            maintainAspectRatio: false
         }
+    });
+}
+
+// Format date with timezone
+function formatDate(dateStr) {
+    if (!dateStr) return 'N/A';
+    const date = new Date(dateStr);
+    return date.toLocaleString('ru-RU', { 
+        timeZone: 'Europe/Moscow',
+        hour: '2-digit',
+        minute: '2-digit'
     });
 }
 
@@ -162,28 +180,33 @@ async function updateStats() {
         const response = await fetch(url);
         const data = await response.json();
 
-        // Update summary cards
-        document.getElementById('totalRequests').textContent = data.requests.total || '0';
-        document.getElementById('successfulRequests').textContent = data.requests.success || '0';
-        document.getElementById('failedRequests').textContent = data.requests.failed || '0';
-        document.getElementById('avgDuration').textContent = data.requests.average_duration || '0s';
+        // Update summary cards with compact layout
+        const summaryData = {
+            'Всего запросов': data.requests.total || '0',
+            'Успешных': data.requests.success || '0',
+            'Ошибок': data.requests.failed || '0',
+            'Среднее время': data.requests.average_duration || '0s',
+            'DOCX (всего/ошибок)': `${data.docx.total_generations || '0'}/${data.docx.error_generations || '0'}`,
+            'Gotenberg (всего/ошибок)': `${data.gotenberg.total_requests || '0'}/${data.gotenberg.error_requests || '0'}`,
+            'PDF (всего/средний размер)': `${data.pdf.total_files || '0'}/${data.pdf.average_size || '0 B'}`
+        };
 
-        // Update DOCX stats
-        document.getElementById('docxTotal').textContent = data.docx.total_generations || '0';
-        document.getElementById('docxErrors').textContent = data.docx.error_generations || '0';
-        document.getElementById('docxAvgDuration').textContent = data.docx.average_duration || '0s';
-        document.getElementById('docxLastGeneration').textContent = data.docx.last_generation_time ? new Date(data.docx.last_generation_time).toLocaleString() : 'N/A';
+        // Обновляем все текстовые данные в компактном виде
+        const statsContainer = document.getElementById('statsContainer');
+        statsContainer.innerHTML = '';
+        for (const [label, value] of Object.entries(summaryData)) {
+            statsContainer.innerHTML += `<div class="stat-item"><span class="stat-label">${label}:</span> <span class="stat-value">${value}</span></div>`;
+        }
 
-        // Update Gotenberg stats
-        document.getElementById('gotenbergTotal').textContent = data.gotenberg.total_requests || '0';
-        document.getElementById('gotenbergErrors').textContent = data.gotenberg.error_requests || '0';
-        document.getElementById('gotenbergAvgDuration').textContent = data.gotenberg.average_duration || '0s';
-        document.getElementById('gotenbergLastRequest').textContent = data.gotenberg.last_request_time ? new Date(data.gotenberg.last_request_time).toLocaleString() : 'N/A';
-
-        // Update PDF stats
-        document.getElementById('pdfTotal').textContent = data.pdf.total_files || '0';
-        document.getElementById('pdfAvgSize').textContent = data.pdf.average_size || '0 B';
-        document.getElementById('pdfLastProcessed').textContent = data.pdf.last_processed_time ? new Date(data.pdf.last_processed_time).toLocaleString() : 'N/A';
+        // Добавляем только одну временную метку (последнее обновление)
+        const lastUpdate = Math.max(
+            new Date(data.docx.last_generation_time || 0),
+            new Date(data.gotenberg.last_request_time || 0),
+            new Date(data.pdf.last_processed_time || 0)
+        );
+        if (lastUpdate > 0) {
+            statsContainer.innerHTML += `<div class="stat-item"><span class="stat-label">Последнее обновление:</span> <span class="stat-value">${formatDate(lastUpdate)}</span></div>`;
+        }
 
         // Update charts
         if (weekdayChart) {
@@ -236,13 +259,36 @@ function parseSize(sizeStr) {
 
 // Update weekday chart
 function updateWeekdayChart(data) {
-    weekdayChart.data.datasets[0].data = Object.values(data);
+    const dayMapping = {
+        'Sunday': 'Вс',
+        'Monday': 'Пн',
+        'Tuesday': 'Вт',
+        'Wednesday': 'Ср',
+        'Thursday': 'Чт',
+        'Friday': 'Пт',
+        'Saturday': 'Сб'
+    };
+    
+    const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    const values = days.map(day => {
+        const englishDay = Object.keys(dayMapping).find(key => dayMapping[key] === day);
+        return data[englishDay] || 0;
+    });
+    
+    weekdayChart.data.datasets[0].data = values;
     weekdayChart.update();
 }
 
 // Update hour chart
 function updateHourChart(data) {
-    hourChart.data.datasets[0].data = Object.values(data);
+    const hourData = Array(24).fill(0);
+    Object.entries(data).forEach(([hour, count]) => {
+        const hourNumber = parseInt(hour);
+        if (!isNaN(hourNumber) && hourNumber >= 0 && hourNumber < 24) {
+            hourData[hourNumber] = count;
+        }
+    });
+    hourChart.data.datasets[0].data = hourData;
     hourChart.update();
 }
 

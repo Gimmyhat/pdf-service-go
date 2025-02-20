@@ -305,38 +305,64 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 
 	// Запрашиваем распределение по дням недели
 	rows, err := p.db.Query(`
+		WITH day_counts AS (
+			SELECT 
+				EXTRACT(DOW FROM timestamp AT TIME ZONE 'Europe/Moscow') as day_number,
+				COUNT(*) as count,
+				MAX(timestamp AT TIME ZONE 'Europe/Moscow') as moscow_time
+			FROM request_logs
+			WHERE timestamp >= $1
+			GROUP BY EXTRACT(DOW FROM timestamp AT TIME ZONE 'Europe/Moscow')
+		)
 		SELECT 
-			EXTRACT(DOW FROM timestamp) as day_of_week,
-			COUNT(*) as count
-		FROM request_logs
-		WHERE timestamp >= $1
-		GROUP BY day_of_week
+			day_number,
+			count,
+			moscow_time
+		FROM day_counts
+		ORDER BY day_number
 	`, since.UTC())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error querying days: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var dayFloat float64
+		var dayNumber float64
 		var count uint64
-		if err := rows.Scan(&dayFloat, &count); err != nil {
-			return nil, err
+		var moscowTime time.Time
+		if err := rows.Scan(&dayNumber, &count, &moscowTime); err != nil {
+			return nil, fmt.Errorf("error scanning day row: %w", err)
 		}
-		// PostgreSQL возвращает 0 для воскресенья, 1-6 для пн-сб
-		// Go использует 0 для воскресенья, 1-6 для пн-сб, так что преобразование не требуется
-		day := time.Weekday(int(dayFloat))
+
+		// В PostgreSQL EXTRACT(DOW) возвращает 0 для воскресенья и 1-6 для пн-сб,
+		// что точно соответствует Go time.Weekday
+		day := time.Weekday(int(dayNumber))
 		stats.Requests.RequestsByDay[day] = count
+
+		// Отладочный вывод
+		fmt.Printf("Day stats - Name: %s, Time: %s, Count: %d, Index: %d\n",
+			day.String(), moscowTime.Format("2006-01-02 15:04:05"), count, int(dayNumber))
+	}
+
+	// Выводим агрегированную статистику
+	fmt.Printf("\nAggregated statistics:\n")
+	for day, count := range stats.Requests.RequestsByDay {
+		fmt.Printf("%s: Count=%d\n", day.String(), count)
 	}
 
 	// Запрашиваем распределение по часам
 	rows, err = p.db.Query(`
-		SELECT 
-			EXTRACT(HOUR FROM timestamp) as hour,
-			COUNT(*) as count
-		FROM request_logs
-		WHERE timestamp >= $1
-		GROUP BY hour
+		WITH hour_counts AS (
+			SELECT 
+				EXTRACT(HOUR FROM timestamp AT TIME ZONE 'Europe/Moscow') as hour,
+				COUNT(*) as count
+			FROM request_logs
+			WHERE timestamp >= $1
+			GROUP BY hour
+		)
+		SELECT hour, count
+		FROM hour_counts
+		ORDER BY hour
 	`, since.UTC())
 	if err != nil {
 		return nil, err

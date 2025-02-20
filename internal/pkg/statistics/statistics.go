@@ -77,6 +77,12 @@ func (s *Statistics) GetStatisticsForPeriod(period string) (StatisticsResponse, 
 
 	// Определяем период
 	switch period {
+	case "15min":
+		since = now.Add(-15 * time.Minute)
+	case "1hour":
+		since = now.Add(-1 * time.Hour)
+	case "5hours":
+		since = now.Add(-5 * time.Hour)
 	case "day":
 		since = now.Add(-24 * time.Hour)
 	case "week":

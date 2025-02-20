@@ -2,46 +2,51 @@ FROM golang:1.22-bullseye AS builder
 
 WORKDIR /app
 
-# Устанавливаем git и SQLite
-RUN apt-get update && apt-get install -y \
-    git \
-    sqlite3 \
-    libsqlite3-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY . .
+# Копируем только файлы, необходимые для загрузки зависимостей
+COPY go.mod go.sum ./
 RUN go mod download
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o main cmd/api/main.go
+
+# Копируем исходный код
+COPY . .
+
+# Собираем приложение
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o main cmd/api/main.go
 
 FROM pypy:3.9-slim-bullseye
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости
-RUN apt-get update && \
+# Настраиваем репозитории и устанавливаем зависимости
+RUN set -eux; \
+    # Добавляем альтернативные зеркала
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/10no-check-valid-until; \
+    echo "deb http://mirrors.163.com/debian/ bullseye main contrib non-free" > /etc/apt/sources.list; \
+    echo "deb http://mirrors.163.com/debian-security/ bullseye-security main contrib non-free" >> /etc/apt/sources.list; \
+    echo "deb http://mirrors.163.com/debian/ bullseye-updates main contrib non-free" >> /etc/apt/sources.list; \
+    # Обновляем и устанавливаем пакеты
+    apt-get update && \
     apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    libxml2-dev \
-    libxslt-dev \
-    libjpeg-dev \
-    zlib1g-dev \
-    libfreetype-dev \
-    liblcms2-dev \
-    libopenjp2-7-dev \
-    libtiff-dev \
-    tk-dev \
-    tcl-dev \
-    libharfbuzz-dev \
-    libfribidi-dev \
-    sqlite3 \
-    libsqlite3-0 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Создаем директорию для базы данных
-RUN mkdir -p /app/data && chown -R nobody:nogroup /app/data
+        gcc \
+        python3-dev \
+        libxml2-dev \
+        libxslt-dev \
+        libjpeg-dev \
+        zlib1g-dev \
+        libfreetype-dev \
+        liblcms2-dev \
+        libopenjp2-7-dev \
+        libtiff-dev \
+        tk-dev \
+        tcl-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        ca-certificates && \
+    # Очищаем кэш
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Создаем директорию для данных
+    mkdir -p /app/data && \
+    chown -R nobody:nogroup /app/data
 
 # Копируем requirements-pypy.txt и устанавливаем зависимости Python
 COPY --from=builder /app/requirements-pypy.txt .

@@ -12,11 +12,47 @@
         }
         .chart-container {
             position: relative;
-            height: 300px;
+            height: 250px;
             width: 100%;
         }
         .period-selector {
             margin-bottom: 1rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .stat-value {
+            float: right;
+            font-weight: 600;
+        }
+        .charts-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .charts-row-small {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        @media (max-width: 768px) {
+            .charts-row, .charts-row-small {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -26,214 +62,63 @@
             <h1>PDF Service Statistics</h1>
             <div class="period-selector">
                 <select class="form-select" id="periodSelect" onchange="updateStats()">
-                    <option value="day">Last 24 Hours</option>
-                    <option value="week">Last Week</option>
-                    <option value="month">Last Month</option>
-                    <option value="all" selected>All Time</option>
+                    <option value="15min">За 15 минут</option>
+                    <option value="1hour">За 1 час</option>
+                    <option value="5hours">За 5 часов</option>
+                    <option value="day">За 24 часа</option>
+                    <option value="week">За неделю</option>
+                    <option value="month">За месяц</option>
+                    <option value="all" selected>За все время</option>
                 </select>
             </div>
         </div>
-        
-        <!-- Request Stats -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <h2>Request Statistics</h2>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Total Requests</h5>
-                        <p class="card-text" id="totalRequests">Loading...</p>
+
+        <!-- Compact Statistics -->
+        <div id="statsContainer" class="stats-grid"></div>
+
+        <!-- Main Charts -->
+        <div class="charts-row">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Запросы по дням недели</h5>
+                    <div class="chart-container">
+                        <canvas id="weekdayChart"></canvas>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Successful Requests</h5>
-                        <p class="card-text" id="successfulRequests">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Failed Requests</h5>
-                        <p class="card-text" id="failedRequests">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Average Duration</h5>
-                        <p class="card-text" id="avgDuration">Loading...</p>
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Запросы по часам</h5>
+                    <div class="chart-container">
+                        <canvas id="hourChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- DOCX Stats -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <h2>DOCX Generation Statistics</h2>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Total Generations</h5>
-                        <p class="card-text" id="docxTotal">Loading...</p>
+        <!-- Status Charts -->
+        <div class="charts-row-small">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Статус DOCX</h5>
+                    <div class="chart-container">
+                        <canvas id="docxChart"></canvas>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Error Generations</h5>
-                        <p class="card-text" id="docxErrors">Loading...</p>
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Статус Gotenberg</h5>
+                    <div class="chart-container">
+                        <canvas id="gotenbergChart"></canvas>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Average Duration</h5>
-                        <p class="card-text" id="docxAvgDuration">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Last Generation</h5>
-                        <p class="card-text" id="docxLastGeneration">Loading...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Gotenberg Stats -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <h2>Gotenberg Statistics</h2>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Total Requests</h5>
-                        <p class="card-text" id="gotenbergTotal">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Error Requests</h5>
-                        <p class="card-text" id="gotenbergErrors">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Average Duration</h5>
-                        <p class="card-text" id="gotenbergAvgDuration">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Last Request</h5>
-                        <p class="card-text" id="gotenbergLastRequest">Loading...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- PDF Stats -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <h2>PDF Statistics</h2>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Total Files</h5>
-                        <p class="card-text" id="pdfTotal">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Average Size</h5>
-                        <p class="card-text" id="pdfAvgSize">Loading...</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Last Processed</h5>
-                        <p class="card-text" id="pdfLastProcessed">Loading...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Charts -->
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Requests by Day of Week</h5>
-                        <div class="chart-container">
-                            <canvas id="weekdayChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Requests by Hour</h5>
-                        <div class="chart-container">
-                            <canvas id="hourChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">DOCX Generation Status</h5>
-                        <div class="chart-container">
-                            <canvas id="docxChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Gotenberg Status</h5>
-                        <div class="chart-container">
-                            <canvas id="gotenbergChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">PDF Size Distribution</h5>
-                        <div class="chart-container">
-                            <canvas id="pdfSizeChart"></canvas>
-                        </div>
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Размеры PDF</h5>
+                    <div class="chart-container">
+                        <canvas id="pdfSizeChart"></canvas>
                     </div>
                 </div>
             </div>
