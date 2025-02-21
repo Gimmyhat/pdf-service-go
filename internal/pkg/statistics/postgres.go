@@ -127,6 +127,13 @@ func (p *PostgresDB) LogPDF(timestamp time.Time, size int64) error {
 
 // GetStatistics возвращает статистику за указанный период
 func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
+	// Отладочный вывод для проверки времени
+	fmt.Printf("\n=== GetStatistics Debug ===\n")
+	fmt.Printf("Input time: %v\n", since)
+	fmt.Printf("Input time UTC: %v\n", since.UTC())
+	fmt.Printf("Input time Unix: %d\n", since.Unix())
+	fmt.Printf("Is zero time: %v\n", since.IsZero())
+
 	stats := &Stats{
 		Requests: RequestStats{
 			RequestsByDay:  make(map[time.Weekday]uint64),
@@ -137,21 +144,84 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		PDF:       PDFStats{},
 	}
 
+	// Проверяем, что время не нулевое
+	var whereClause string
+	var params []interface{}
+
+	if since.IsZero() {
+		whereClause = ""
+		params = []interface{}{}
+		fmt.Printf("\nUsing no time filter (all data)\n")
+	} else {
+		whereClause = "WHERE timestamp >= $1"
+		params = []interface{}{since.UTC()}
+		fmt.Printf("\nUsing time filter: >= %v\n", since.UTC())
+	}
+
+	// Сначала проверим наличие данных в таблице
+	var totalCount int64
+	checkQuery := fmt.Sprintf(`
+		SELECT COUNT(*) 
+		FROM request_logs
+		%s
+	`, whereClause)
+
+	fmt.Printf("\nChecking data availability with query: %s\n", checkQuery)
+	if len(params) > 0 {
+		fmt.Printf("Parameters: %v\n", params)
+	}
+
+	checkErr := p.db.QueryRow(checkQuery, params...).Scan(&totalCount)
+	if checkErr != nil {
+		fmt.Printf("Error checking data: %v\n", checkErr)
+		return nil, checkErr
+	}
+	fmt.Printf("Total records found: %d\n", totalCount)
+
+	// Проверим временной диапазон данных
+	var minTs, maxTs sql.NullTime
+	rangeQuery := fmt.Sprintf(`
+		SELECT MIN(timestamp), MAX(timestamp)
+		FROM request_logs
+		%s
+	`, whereClause)
+
+	fmt.Printf("\nChecking time range with query: %s\n", rangeQuery)
+	rangeErr := p.db.QueryRow(rangeQuery, params...).Scan(&minTs, &maxTs)
+	if rangeErr != nil {
+		fmt.Printf("Error checking time range: %v\n", rangeErr)
+		return nil, rangeErr
+	}
+	if minTs.Valid && maxTs.Valid {
+		fmt.Printf("Time range: from %v to %v\n", minTs.Time, maxTs.Time)
+	} else {
+		fmt.Printf("No time range data available\n")
+	}
+
 	// Запрашиваем статистику запросов
-	row := p.db.QueryRow(`
+	requestQuery := fmt.Sprintf(`
 		SELECT 
-			COUNT(*) as total,
-			SUM(CASE WHEN success = true THEN 1 ELSE 0 END) as success,
-			SUM(CASE WHEN success = false THEN 1 ELSE 0 END) as failed,
-			CAST(AVG(CAST(duration_ns AS FLOAT)) AS BIGINT) as avg_duration,
-			MIN(duration_ns) as min_duration,
-			MAX(duration_ns) as max_duration,
+			COALESCE(COUNT(*), 0) as total,
+			COALESCE(SUM(CASE WHEN success = true THEN 1 ELSE 0 END), 0) as success,
+			COALESCE(SUM(CASE WHEN success = false THEN 1 ELSE 0 END), 0) as failed,
+			COALESCE(CAST(AVG(CAST(duration_ns AS FLOAT)) AS BIGINT), 0) as avg_duration,
+			COALESCE(MIN(duration_ns), 0) as min_duration,
+			COALESCE(MAX(duration_ns), 0) as max_duration,
 			MAX(timestamp) as last_updated
 		FROM request_logs
-		WHERE timestamp >= $1
-	`, since.UTC())
+		%s
+	`, whereClause)
 
-	var avgDuration, minDuration, maxDuration sql.NullInt64
+	fmt.Printf("Executing request query: %s with params: %v\n", requestQuery, params)
+
+	var row *sql.Row
+	if len(params) > 0 {
+		row = p.db.QueryRow(requestQuery, params...)
+	} else {
+		row = p.db.QueryRow(requestQuery)
+	}
+
+	var avgDuration, minDuration, maxDuration int64
 	var lastUpdated sql.NullTime
 	if err := row.Scan(
 		&stats.Requests.TotalRequests,
@@ -161,24 +231,32 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		&minDuration,
 		&maxDuration,
 		&lastUpdated,
-	); err != nil && err != sql.ErrNoRows {
-		return nil, err
+	); err != nil {
+		return nil, fmt.Errorf("error scanning request stats: %w", err)
 	}
 
 	// Запрашиваем статистику DOCX
-	row = p.db.QueryRow(`
+	docxQuery := fmt.Sprintf(`
 		SELECT 
-			COUNT(*) as total,
-			SUM(CASE WHEN has_error = true THEN 1 ELSE 0 END) as errors,
-			CAST(AVG(CAST(duration_ns AS FLOAT)) AS BIGINT) as avg_duration,
-			MIN(duration_ns) as min_duration,
-			MAX(duration_ns) as max_duration,
+			COALESCE(COUNT(*), 0) as total,
+			COALESCE(SUM(CASE WHEN has_error = true THEN 1 ELSE 0 END), 0) as errors,
+			COALESCE(CAST(AVG(CAST(duration_ns AS FLOAT)) AS BIGINT), 0) as avg_duration,
+			COALESCE(MIN(duration_ns), 0) as min_duration,
+			COALESCE(MAX(duration_ns), 0) as max_duration,
 			MAX(timestamp) as last_generation
 		FROM docx_logs
-		WHERE timestamp >= $1
-	`, since.UTC())
+		%s
+	`, whereClause)
 
-	var docxAvgDuration, docxMinDuration, docxMaxDuration sql.NullInt64
+	fmt.Printf("Executing DOCX query: %s with params: %v\n", docxQuery, params)
+
+	if len(params) > 0 {
+		row = p.db.QueryRow(docxQuery, params...)
+	} else {
+		row = p.db.QueryRow(docxQuery)
+	}
+
+	var docxAvgDuration, docxMinDuration, docxMaxDuration int64
 	var lastGeneration sql.NullTime
 	if err := row.Scan(
 		&stats.Docx.TotalGenerations,
@@ -187,24 +265,32 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		&docxMinDuration,
 		&docxMaxDuration,
 		&lastGeneration,
-	); err != nil && err != sql.ErrNoRows {
-		return nil, err
+	); err != nil {
+		return nil, fmt.Errorf("error scanning docx stats: %w", err)
 	}
 
 	// Запрашиваем статистику Gotenberg
-	row = p.db.QueryRow(`
+	gotenbergQuery := fmt.Sprintf(`
 		SELECT 
-			COUNT(*) as total,
-			SUM(CASE WHEN has_error = true THEN 1 ELSE 0 END) as errors,
-			CAST(AVG(CAST(duration_ns AS FLOAT)) AS BIGINT) as avg_duration,
-			MIN(duration_ns) as min_duration,
-			MAX(duration_ns) as max_duration,
+			COALESCE(COUNT(*), 0) as total,
+			COALESCE(SUM(CASE WHEN has_error = true THEN 1 ELSE 0 END), 0) as errors,
+			COALESCE(CAST(AVG(CAST(duration_ns AS FLOAT)) AS BIGINT), 0) as avg_duration,
+			COALESCE(MIN(duration_ns), 0) as min_duration,
+			COALESCE(MAX(duration_ns), 0) as max_duration,
 			MAX(timestamp) as last_request
 		FROM gotenberg_logs
-		WHERE timestamp >= $1
-	`, since.UTC())
+		%s
+	`, whereClause)
 
-	var gotenbergAvgDuration, gotenbergMinDuration, gotenbergMaxDuration sql.NullInt64
+	fmt.Printf("Executing Gotenberg query: %s with params: %v\n", gotenbergQuery, params)
+
+	if len(params) > 0 {
+		row = p.db.QueryRow(gotenbergQuery, params...)
+	} else {
+		row = p.db.QueryRow(gotenbergQuery)
+	}
+
+	var gotenbergAvgDuration, gotenbergMinDuration, gotenbergMaxDuration int64
 	var lastRequest sql.NullTime
 	if err := row.Scan(
 		&stats.Gotenberg.TotalRequests,
@@ -213,23 +299,31 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		&gotenbergMinDuration,
 		&gotenbergMaxDuration,
 		&lastRequest,
-	); err != nil && err != sql.ErrNoRows {
-		return nil, err
+	); err != nil {
+		return nil, fmt.Errorf("error scanning gotenberg stats: %w", err)
 	}
 
 	// Запрашиваем статистику PDF
-	row = p.db.QueryRow(`
+	pdfQuery := fmt.Sprintf(`
 		SELECT 
-			COUNT(*) as total,
-			CAST(AVG(CAST(size_bytes AS FLOAT)) AS BIGINT) as avg_size,
-			MIN(size_bytes) as min_size,
-			MAX(size_bytes) as max_size,
+			COALESCE(COUNT(*), 0) as total,
+			COALESCE(CAST(AVG(CAST(size_bytes AS FLOAT)) AS BIGINT), 0) as avg_size,
+			COALESCE(MIN(size_bytes), 0) as min_size,
+			COALESCE(MAX(size_bytes), 0) as max_size,
 			MAX(timestamp) as last_processed
 		FROM pdf_logs
-		WHERE timestamp >= $1
-	`, since.UTC())
+		%s
+	`, whereClause)
 
-	var avgSize, minSize, maxSize sql.NullInt64
+	fmt.Printf("Executing PDF query: %s with params: %v\n", pdfQuery, params)
+
+	if len(params) > 0 {
+		row = p.db.QueryRow(pdfQuery, params...)
+	} else {
+		row = p.db.QueryRow(pdfQuery)
+	}
+
+	var avgSize, minSize, maxSize int64
 	var lastProcessed sql.NullTime
 	if err := row.Scan(
 		&stats.PDF.TotalFiles,
@@ -237,20 +331,20 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		&minSize,
 		&maxSize,
 		&lastProcessed,
-	); err != nil && err != sql.ErrNoRows {
-		return nil, err
+	); err != nil {
+		return nil, fmt.Errorf("error scanning pdf stats: %w", err)
 	}
 
 	// Устанавливаем значения длительностей и размеров
 	if stats.Requests.TotalRequests > 0 {
-		if avgDuration.Valid {
-			stats.Requests.TotalDuration = time.Duration(avgDuration.Int64) * time.Duration(stats.Requests.TotalRequests)
+		if avgDuration > 0 {
+			stats.Requests.TotalDuration = time.Duration(avgDuration) * time.Duration(stats.Requests.TotalRequests)
 		}
-		if minDuration.Valid {
-			stats.Requests.MinDuration = time.Duration(minDuration.Int64)
+		if minDuration > 0 {
+			stats.Requests.MinDuration = time.Duration(minDuration)
 		}
-		if maxDuration.Valid {
-			stats.Requests.MaxDuration = time.Duration(maxDuration.Int64)
+		if maxDuration > 0 {
+			stats.Requests.MaxDuration = time.Duration(maxDuration)
 		}
 		if lastUpdated.Valid {
 			stats.Requests.LastUpdated = lastUpdated.Time
@@ -258,14 +352,14 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	}
 
 	if stats.Docx.TotalGenerations > 0 {
-		if docxAvgDuration.Valid {
-			stats.Docx.TotalDuration = time.Duration(docxAvgDuration.Int64) * time.Duration(stats.Docx.TotalGenerations)
+		if docxAvgDuration > 0 {
+			stats.Docx.TotalDuration = time.Duration(docxAvgDuration) * time.Duration(stats.Docx.TotalGenerations)
 		}
-		if docxMinDuration.Valid {
-			stats.Docx.MinDuration = time.Duration(docxMinDuration.Int64)
+		if docxMinDuration > 0 {
+			stats.Docx.MinDuration = time.Duration(docxMinDuration)
 		}
-		if docxMaxDuration.Valid {
-			stats.Docx.MaxDuration = time.Duration(docxMaxDuration.Int64)
+		if docxMaxDuration > 0 {
+			stats.Docx.MaxDuration = time.Duration(docxMaxDuration)
 		}
 		if lastGeneration.Valid {
 			stats.Docx.LastGenerationTime = lastGeneration.Time
@@ -273,14 +367,14 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	}
 
 	if stats.Gotenberg.TotalRequests > 0 {
-		if gotenbergAvgDuration.Valid {
-			stats.Gotenberg.TotalDuration = time.Duration(gotenbergAvgDuration.Int64) * time.Duration(stats.Gotenberg.TotalRequests)
+		if gotenbergAvgDuration > 0 {
+			stats.Gotenberg.TotalDuration = time.Duration(gotenbergAvgDuration) * time.Duration(stats.Gotenberg.TotalRequests)
 		}
-		if gotenbergMinDuration.Valid {
-			stats.Gotenberg.MinDuration = time.Duration(gotenbergMinDuration.Int64)
+		if gotenbergMinDuration > 0 {
+			stats.Gotenberg.MinDuration = time.Duration(gotenbergMinDuration)
 		}
-		if gotenbergMaxDuration.Valid {
-			stats.Gotenberg.MaxDuration = time.Duration(gotenbergMaxDuration.Int64)
+		if gotenbergMaxDuration > 0 {
+			stats.Gotenberg.MaxDuration = time.Duration(gotenbergMaxDuration)
 		}
 		if lastRequest.Valid {
 			stats.Gotenberg.LastRequestTime = lastRequest.Time
@@ -288,15 +382,15 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	}
 
 	if stats.PDF.TotalFiles > 0 {
-		if avgSize.Valid {
-			stats.PDF.TotalSize = avgSize.Int64 * int64(stats.PDF.TotalFiles)
-			stats.PDF.AverageSize = float64(avgSize.Int64)
+		if avgSize > 0 {
+			stats.PDF.TotalSize = avgSize * int64(stats.PDF.TotalFiles)
+			stats.PDF.AverageSize = float64(avgSize)
 		}
-		if minSize.Valid {
-			stats.PDF.MinSize = minSize.Int64
+		if minSize > 0 {
+			stats.PDF.MinSize = minSize
 		}
-		if maxSize.Valid {
-			stats.PDF.MaxSize = maxSize.Int64
+		if maxSize > 0 {
+			stats.PDF.MaxSize = maxSize
 		}
 		if lastProcessed.Valid {
 			stats.PDF.LastProcessedTime = lastProcessed.Time
@@ -304,23 +398,33 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	}
 
 	// Запрашиваем распределение по дням недели
-	rows, err := p.db.Query(`
+	dayQuery := fmt.Sprintf(`
 		WITH day_counts AS (
 			SELECT 
-				EXTRACT(DOW FROM timestamp AT TIME ZONE 'Europe/Moscow') as day_number,
+				EXTRACT(DOW FROM timestamp) as day_number,
 				COUNT(*) as count,
-				MAX(timestamp AT TIME ZONE 'Europe/Moscow') as moscow_time
+				MAX(timestamp) as utc_time
 			FROM request_logs
-			WHERE timestamp >= $1
-			GROUP BY EXTRACT(DOW FROM timestamp AT TIME ZONE 'Europe/Moscow')
+			%s
+			GROUP BY EXTRACT(DOW FROM timestamp)
 		)
 		SELECT 
 			day_number,
 			count,
-			moscow_time
+			utc_time
 		FROM day_counts
 		ORDER BY day_number
-	`, since.UTC())
+	`, whereClause)
+
+	fmt.Printf("Executing day query: %s with params: %v\n", dayQuery, params)
+
+	var rows *sql.Rows
+	var err error
+	if len(params) > 0 {
+		rows, err = p.db.Query(dayQuery, params...)
+	} else {
+		rows, err = p.db.Query(dayQuery)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error querying days: %w", err)
 	}
@@ -329,19 +433,17 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	for rows.Next() {
 		var dayNumber float64
 		var count uint64
-		var moscowTime time.Time
-		if err := rows.Scan(&dayNumber, &count, &moscowTime); err != nil {
+		var utcTime time.Time
+		if err := rows.Scan(&dayNumber, &count, &utcTime); err != nil {
 			return nil, fmt.Errorf("error scanning day row: %w", err)
 		}
 
-		// В PostgreSQL EXTRACT(DOW) возвращает 0 для воскресенья и 1-6 для пн-сб,
-		// что точно соответствует Go time.Weekday
 		day := time.Weekday(int(dayNumber))
 		stats.Requests.RequestsByDay[day] = count
 
 		// Отладочный вывод
 		fmt.Printf("Day stats - Name: %s, Time: %s, Count: %d, Index: %d\n",
-			day.String(), moscowTime.Format("2006-01-02 15:04:05"), count, int(dayNumber))
+			day.String(), utcTime.Format(time.RFC3339), count, int(dayNumber))
 	}
 
 	// Выводим агрегированную статистику
@@ -351,19 +453,27 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	}
 
 	// Запрашиваем распределение по часам
-	rows, err = p.db.Query(`
+	hourQuery := fmt.Sprintf(`
 		WITH hour_counts AS (
 			SELECT 
-				EXTRACT(HOUR FROM timestamp AT TIME ZONE 'Europe/Moscow') as hour,
+				EXTRACT(HOUR FROM timestamp) as hour,
 				COUNT(*) as count
 			FROM request_logs
-			WHERE timestamp >= $1
-			GROUP BY hour
+			%s
+			GROUP BY EXTRACT(HOUR FROM timestamp)
 		)
 		SELECT hour, count
 		FROM hour_counts
 		ORDER BY hour
-	`, since.UTC())
+	`, whereClause)
+
+	fmt.Printf("Executing hour query: %s with params: %v\n", hourQuery, params)
+
+	if len(params) > 0 {
+		rows, err = p.db.Query(hourQuery, params...)
+	} else {
+		rows, err = p.db.Query(hourQuery)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -378,6 +488,15 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		hour := int(hourFloat)
 		stats.Requests.RequestsByHour[hour] = count
 	}
+
+	// Добавляем отладочный вывод перед возвратом результатов
+	fmt.Printf("\n=== Statistics Summary ===\n")
+	fmt.Printf("Total Requests: %d\n", stats.Requests.TotalRequests)
+	fmt.Printf("Success Requests: %d\n", stats.Requests.SuccessRequests)
+	fmt.Printf("Failed Requests: %d\n", stats.Requests.FailedRequests)
+	fmt.Printf("Requests by Day: %v\n", stats.Requests.RequestsByDay)
+	fmt.Printf("Requests by Hour: %v\n", stats.Requests.RequestsByHour)
+	fmt.Printf("=== End of GetStatistics ===\n\n")
 
 	return stats, nil
 }

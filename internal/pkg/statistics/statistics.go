@@ -70,12 +70,86 @@ func (s *Statistics) Close() error {
 	return s.db.Close()
 }
 
-// GetStatisticsForPeriod возвращает статистику за указанный период в формате для API
-func (s *Statistics) GetStatisticsForPeriod(period string) (StatisticsResponse, error) {
-	var since time.Time
-	now := time.Now()
+// Типы ответов API
+type RequestsResponse struct {
+	Total           uint64
+	Success         uint64
+	Failed          uint64
+	AverageDuration string
+	ByDayOfWeek     map[string]uint64
+	ByHourOfDay     map[string]uint64
+}
 
-	// Определяем период
+type DocxResponse struct {
+	TotalGenerations   uint64
+	ErrorGenerations   uint64
+	AverageDuration    string
+	LastGenerationTime string
+}
+
+type GotenbergResponse struct {
+	TotalRequests   uint64
+	ErrorRequests   uint64
+	AverageDuration string
+	LastRequestTime string
+}
+
+type PDFResponse struct {
+	TotalFiles        uint64
+	AverageSize       string
+	MinSize           string
+	MaxSize           string
+	LastProcessedTime string
+}
+
+// GetAverageDuration возвращает среднюю продолжительность для RequestStats
+func (s *RequestStats) GetAverageDuration() time.Duration {
+	if s.TotalRequests == 0 {
+		return 0
+	}
+	return s.TotalDuration / time.Duration(s.TotalRequests)
+}
+
+// GetAverageDuration возвращает среднюю продолжительность для DocxStats
+func (s *DocxStats) GetAverageDuration() time.Duration {
+	if s.TotalGenerations == 0 {
+		return 0
+	}
+	return s.TotalDuration / time.Duration(s.TotalGenerations)
+}
+
+// GetAverageDuration возвращает среднюю продолжительность для GotenbergStats
+func (s *GotenbergStats) GetAverageDuration() time.Duration {
+	if s.TotalRequests == 0 {
+		return 0
+	}
+	return s.TotalDuration / time.Duration(s.TotalRequests)
+}
+
+// GetAverageSize возвращает средний размер для PDFStats
+func (s *PDFStats) GetAverageSize() int64 {
+	if s.TotalFiles == 0 {
+		return 0
+	}
+	return s.TotalSize / int64(s.TotalFiles)
+}
+
+// GetStatisticsForPeriod возвращает статистику за указанный период
+func (s *Statistics) GetStatisticsForPeriod(period string) (*StatisticsResponse, error) {
+	// Загружаем московскую временную зону
+	moscowLoc, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Moscow timezone: %w", err)
+	}
+
+	// Получаем текущее время в московской зоне
+	now := time.Now().In(moscowLoc)
+	var since time.Time
+
+	// Отладочный вывод
+	fmt.Printf("GetStatisticsForPeriod: period=%s, current time (Moscow)=%v\n", period, now)
+
+	// Определяем начальное время периода
 	switch period {
 	case "15min":
 		since = now.Add(-15 * time.Minute)
@@ -83,79 +157,75 @@ func (s *Statistics) GetStatisticsForPeriod(period string) (StatisticsResponse, 
 		since = now.Add(-1 * time.Hour)
 	case "5hours":
 		since = now.Add(-5 * time.Hour)
-	case "day":
+	case "24hours":
 		since = now.Add(-24 * time.Hour)
 	case "week":
-		since = now.Add(-7 * 24 * time.Hour)
+		since = now.AddDate(0, 0, -7)
 	case "month":
-		since = now.Add(-30 * 24 * time.Hour)
+		since = now.AddDate(0, -1, 0)
+	case "all", "":
+		// Для "all" или пустого значения используем нулевое время
+		since = time.Time{}
 	default:
-		// Для "all" или неизвестного периода берем всю статистику
-		since = time.Time{} // Нулевое время = начало времен
+		return nil, fmt.Errorf("unknown period: %s", period)
 	}
 
+	// Отладочный вывод
+	fmt.Printf("Calculated since time (Moscow): %v\n", since)
+	fmt.Printf("Calculated since time (UTC): %v\n", since.UTC())
+	fmt.Printf("Is zero time: %v\n", since.IsZero())
+
+	// Получаем статистику из базы данных
 	stats, err := s.db.GetStatistics(since)
 	if err != nil {
-		return StatisticsResponse{}, fmt.Errorf("failed to get statistics: %w", err)
+		return nil, fmt.Errorf("failed to get statistics: %w", err)
 	}
 
-	var response StatisticsResponse
+	// Преобразуем статистику в ответ API
+	response := &StatisticsResponse{}
 
 	// Заполняем статистику запросов
 	response.Requests.Total = stats.Requests.TotalRequests
 	response.Requests.Success = stats.Requests.SuccessRequests
 	response.Requests.Failed = stats.Requests.FailedRequests
-
-	if stats.Requests.TotalRequests > 0 {
-		avgDuration := stats.Requests.TotalDuration / time.Duration(stats.Requests.TotalRequests)
-		response.Requests.AverageDuration = avgDuration.String()
-		response.Requests.MinDuration = stats.Requests.MinDuration.String()
-		response.Requests.MaxDuration = stats.Requests.MaxDuration.String()
-	}
+	response.Requests.AverageDuration = formatDuration(stats.Requests.GetAverageDuration())
+	response.Requests.MinDuration = formatDuration(stats.Requests.MinDuration)
+	response.Requests.MaxDuration = formatDuration(stats.Requests.MaxDuration)
+	response.Requests.ByDayOfWeek = make(map[string]uint64)
+	response.Requests.ByHourOfDay = make(map[string]uint64)
 
 	// Заполняем статистику DOCX
 	response.Docx.TotalGenerations = stats.Docx.TotalGenerations
 	response.Docx.ErrorGenerations = stats.Docx.ErrorGenerations
-	if stats.Docx.TotalGenerations > 0 {
-		avgDuration := stats.Docx.TotalDuration / time.Duration(stats.Docx.TotalGenerations)
-		response.Docx.AverageDuration = avgDuration.String()
-		response.Docx.MinDuration = stats.Docx.MinDuration.String()
-		response.Docx.MaxDuration = stats.Docx.MaxDuration.String()
-	}
+	response.Docx.AverageDuration = formatDuration(stats.Docx.GetAverageDuration())
+	response.Docx.MinDuration = formatDuration(stats.Docx.MinDuration)
+	response.Docx.MaxDuration = formatDuration(stats.Docx.MaxDuration)
 	response.Docx.LastGenerationTime = stats.Docx.LastGenerationTime
 
 	// Заполняем статистику Gotenberg
 	response.Gotenberg.TotalRequests = stats.Gotenberg.TotalRequests
 	response.Gotenberg.ErrorRequests = stats.Gotenberg.ErrorRequests
-	if stats.Gotenberg.TotalRequests > 0 {
-		avgDuration := stats.Gotenberg.TotalDuration / time.Duration(stats.Gotenberg.TotalRequests)
-		response.Gotenberg.AverageDuration = avgDuration.String()
-		response.Gotenberg.MinDuration = stats.Gotenberg.MinDuration.String()
-		response.Gotenberg.MaxDuration = stats.Gotenberg.MaxDuration.String()
-	}
+	response.Gotenberg.AverageDuration = formatDuration(stats.Gotenberg.GetAverageDuration())
+	response.Gotenberg.MinDuration = formatDuration(stats.Gotenberg.MinDuration)
+	response.Gotenberg.MaxDuration = formatDuration(stats.Gotenberg.MaxDuration)
 	response.Gotenberg.LastRequestTime = stats.Gotenberg.LastRequestTime
 
 	// Заполняем статистику PDF
 	response.PDF.TotalFiles = stats.PDF.TotalFiles
-	if stats.PDF.TotalFiles > 0 {
-		response.PDF.TotalSize = formatBytes(stats.PDF.TotalSize)
-		response.PDF.MinSize = formatBytes(stats.PDF.MinSize)
-		response.PDF.MaxSize = formatBytes(stats.PDF.MaxSize)
-		response.PDF.AverageSize = formatBytes(int64(stats.PDF.AverageSize))
-	}
+	response.PDF.TotalSize = formatBytes(stats.PDF.TotalSize)
+	response.PDF.AverageSize = formatBytes(stats.PDF.GetAverageSize())
+	response.PDF.MinSize = formatBytes(stats.PDF.MinSize)
+	response.PDF.MaxSize = formatBytes(stats.PDF.MaxSize)
 	response.PDF.LastProcessedTime = stats.PDF.LastProcessedTime
 
-	// Конвертируем дни недели в строки
-	response.Requests.ByDayOfWeek = make(map[string]uint64)
-	weekdayNames := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+	// Преобразуем статистику по дням недели
 	for day, count := range stats.Requests.RequestsByDay {
-		response.Requests.ByDayOfWeek[weekdayNames[day]] = count
+		response.Requests.ByDayOfWeek[day.String()] = count
 	}
 
-	// Конвертируем часы в строки
-	response.Requests.ByHourOfDay = make(map[string]uint64)
+	// Преобразуем статистику по часам
 	for hour, count := range stats.Requests.RequestsByHour {
-		response.Requests.ByHourOfDay[fmt.Sprintf("%02d:00", hour)] = count
+		response.Requests.ByHourOfDay[fmt.Sprintf("%02d", hour)] = count
 	}
 
 	response.LastUpdated = stats.Requests.LastUpdated
@@ -175,4 +245,17 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// formatDuration форматирует продолжительность в человекочитаемый формат
+func formatDuration(duration time.Duration) string {
+	hours := int(duration.Hours())
+	minutes := int(duration.Minutes()) % 60
+	seconds := int(duration.Seconds()) % 60
+	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+}
+
+// formatTime форматирует время в строку в формате ISO 8601
+func formatTime(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
 }

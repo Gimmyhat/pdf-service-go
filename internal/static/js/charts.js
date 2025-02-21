@@ -156,14 +156,17 @@ function initCharts() {
     });
 }
 
-// Format date with timezone
+// Format date with local timezone
 function formatDate(dateStr) {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    return date.toLocaleString('ru-RU', { 
-        timeZone: 'Europe/Moscow',
+    return date.toLocaleString(undefined, { 
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour12: false
     });
 }
 
@@ -171,14 +174,45 @@ function formatDate(dateStr) {
 async function updateStats() {
     try {
         const period = document.getElementById('periodSelect').value;
-        let url = '/api/v1/statistics';
         
-        if (period !== 'all') {
-            url += `?period=${period}`;
-        }
+        // Добавляем отладочный вывод
+        console.log('\n=== Client-side Statistics Update ===');
+        console.log('Selected period:', period);
+        
+        // Всегда добавляем параметр period в URL
+        const url = `/api/v1/statistics?period=${encodeURIComponent(period)}`;
+        console.log('Requesting URL:', url);
 
         const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const data = await response.json();
+        
+        // Добавляем отладочный вывод полученных данных
+        console.log('Received data:', {
+            requests: {
+                total: data.requests.total,
+                success: data.requests.success,
+                failed: data.requests.failed,
+                byDayOfWeek: data.requests.by_day_of_week,
+                byHourOfDay: data.requests.by_hour_of_day
+            },
+            docx: {
+                total: data.docx.total_generations,
+                errors: data.docx.error_generations
+            },
+            gotenberg: {
+                total: data.gotenberg.total_requests,
+                errors: data.gotenberg.error_requests
+            },
+            pdf: {
+                total: data.pdf.total_files,
+                avgSize: data.pdf.average_size,
+                minSize: data.pdf.min_size,
+                maxSize: data.pdf.max_size
+            }
+        });
 
         // Update summary cards with compact layout
         const summaryData = {
@@ -208,32 +242,40 @@ async function updateStats() {
             statsContainer.innerHTML += `<div class="stat-item"><span class="stat-label">Последнее обновление:</span> <span class="stat-value">${formatDate(lastUpdate)}</span></div>`;
         }
 
-        // Update charts
+        // Update charts with debug output
+        console.log('\n=== Updating Charts ===');
+        
         if (weekdayChart) {
+            console.log('Updating weekday chart with data:', data.requests.by_day_of_week);
             updateWeekdayChart(data.requests.by_day_of_week || {});
         }
         if (hourChart) {
+            console.log('Updating hour chart with data:', data.requests.by_hour_of_day);
             updateHourChart(data.requests.by_hour_of_day || {});
         }
         if (docxChart) {
-            updateDocxChart(
-                (data.docx.total_generations || 0) - (data.docx.error_generations || 0),
-                data.docx.error_generations || 0
-            );
+            const docxSuccess = (data.docx.total_generations || 0) - (data.docx.error_generations || 0);
+            const docxErrors = data.docx.error_generations || 0;
+            console.log('Updating DOCX chart with data:', { success: docxSuccess, errors: docxErrors });
+            updateDocxChart(docxSuccess, docxErrors);
         }
         if (gotenbergChart) {
-            updateGotenbergChart(
-                (data.gotenberg.total_requests || 0) - (data.gotenberg.error_requests || 0),
-                data.gotenberg.error_requests || 0
-            );
+            const gotenbergSuccess = (data.gotenberg.total_requests || 0) - (data.gotenberg.error_requests || 0);
+            const gotenbergErrors = data.gotenberg.error_requests || 0;
+            console.log('Updating Gotenberg chart with data:', { success: gotenbergSuccess, errors: gotenbergErrors });
+            updateGotenbergChart(gotenbergSuccess, gotenbergErrors);
         }
         if (pdfSizeChart) {
-            updatePdfSizeChart([
+            const sizes = [
                 parseSize(data.pdf.min_size || '0 B'),
                 parseSize(data.pdf.average_size || '0 B'),
                 parseSize(data.pdf.max_size || '0 B')
-            ]);
+            ];
+            console.log('Updating PDF size chart with data:', sizes);
+            updatePdfSizeChart(sizes);
         }
+
+        console.log('=== End of Statistics Update ===\n');
 
     } catch (error) {
         console.error('Failed to fetch statistics:', error);
@@ -269,9 +311,13 @@ function updateWeekdayChart(data) {
         'Saturday': 'Сб'
     };
     
+    // Получаем смещение часового пояса в днях (если переход через сутки меняет день недели)
+    const timezoneOffset = new Date().getTimezoneOffset() / (60 * 24);
     const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-    const values = days.map(day => {
-        const englishDay = Object.keys(dayMapping).find(key => dayMapping[key] === day);
+    const values = days.map((day, index) => {
+        // Вычисляем индекс дня в UTC
+        let utcDayIndex = (index + Math.round(timezoneOffset) + 7) % 7;
+        const englishDay = Object.keys(dayMapping)[utcDayIndex];
         return data[englishDay] || 0;
     });
     
@@ -283,9 +329,14 @@ function updateWeekdayChart(data) {
 function updateHourChart(data) {
     const hourData = Array(24).fill(0);
     Object.entries(data).forEach(([hour, count]) => {
-        const hourNumber = parseInt(hour);
-        if (!isNaN(hourNumber) && hourNumber >= 0 && hourNumber < 24) {
-            hourData[hourNumber] = count;
+        // Преобразуем UTC час в локальное время
+        const utcHour = parseInt(hour);
+        if (!isNaN(utcHour) && utcHour >= 0 && utcHour < 24) {
+            // Получаем смещение в минутах и преобразуем в часы
+            const timezoneOffset = new Date().getTimezoneOffset() / 60;
+            // Вычисляем локальный час (учитываем переход через сутки)
+            let localHour = (utcHour - timezoneOffset + 24) % 24;
+            hourData[localHour] = count;
         }
     });
     hourChart.data.datasets[0].data = hourData;
