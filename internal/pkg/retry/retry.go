@@ -38,6 +38,8 @@ func New(operation string, logger *zap.Logger, opts ...Option) *Retrier {
 func (r *Retrier) Do(ctx context.Context, op Operation) error {
 	start := time.Now()
 	var lastErr error
+	consecutiveFailures := 0
+	lastFailureTime := time.Now()
 
 	// Увеличиваем счетчик текущих операций в retry
 	metrics.RetryCurrentAttempts.WithLabelValues(r.operation).Inc()
@@ -70,14 +72,32 @@ func (r *Retrier) Do(ctx context.Context, op Operation) error {
 			metrics.RetryAttemptsTotal.WithLabelValues(r.operation, attemptStr, "success").Inc()
 			metrics.RetryOperationDuration.WithLabelValues(r.operation, attemptStr, "success").Observe(time.Since(start).Seconds())
 
+			// Если были предыдущие ошибки, записываем время восстановления
+			if consecutiveFailures > 0 {
+				recoveryTime := time.Since(lastFailureTime)
+				metrics.RetryRecoveryTime.WithLabelValues(r.operation).Observe(recoveryTime.Seconds())
+			}
+
 			// Обновляем процент успешных операций
 			successRate := float64(successfulAttempts) / float64(totalAttempts)
 			metrics.RetrySuccessRate.WithLabelValues(r.operation).Set(successRate)
+
+			// Записываем общую длительность успешной операции
+			metrics.RetryTotalDuration.WithLabelValues(r.operation, "true").Observe(time.Since(start).Seconds())
+
+			// Записываем распределение попыток
+			metrics.RetryAttemptsDistribution.WithLabelValues(r.operation).Observe(float64(attempt))
 
 			return nil
 		}
 
 		lastErr = err
+		consecutiveFailures++
+		lastFailureTime = time.Now()
+
+		// Увеличиваем счетчик последовательных ошибок
+		metrics.RetryConsecutiveFailures.WithLabelValues(r.operation).Inc()
+
 		r.logger.Warn("retry attempt failed",
 			zap.Int("attempt", attempt),
 			zap.Error(err),
@@ -86,16 +106,22 @@ func (r *Retrier) Do(ctx context.Context, op Operation) error {
 
 		// Записываем ошибку в метрики
 		metrics.RetryAttemptsTotal.WithLabelValues(r.operation, attemptStr, "failed").Inc()
+		errorType := classifyError(err, ctx)
 		metrics.RetryErrorsTotal.WithLabelValues(
 			r.operation,
-			classifyError(err, ctx),
+			errorType,
 			attemptStr,
 		).Inc()
+
+		// Записываем причину retry
+		retryReason := determineRetryReason(err, ctx)
+		metrics.RetryReasonTotal.WithLabelValues(r.operation, retryReason).Inc()
 
 		// Если контекст отменен, прекращаем попытки
 		if ctx.Err() != nil {
 			metrics.RetryAttemptsTotal.WithLabelValues(r.operation, attemptStr, "cancelled").Inc()
 			metrics.RetryOperationDuration.WithLabelValues(r.operation, attemptStr, "cancelled").Observe(time.Since(start).Seconds())
+			metrics.RetryTotalDuration.WithLabelValues(r.operation, "false").Observe(time.Since(start).Seconds())
 			return ctx.Err()
 		}
 
@@ -103,6 +129,7 @@ func (r *Retrier) Do(ctx context.Context, op Operation) error {
 		if !IsRetryable(err, r.config.RetryableErrors) {
 			metrics.RetryAttemptsTotal.WithLabelValues(r.operation, attemptStr, "non_retryable").Inc()
 			metrics.RetryOperationDuration.WithLabelValues(r.operation, attemptStr, "non_retryable").Observe(time.Since(start).Seconds())
+			metrics.RetryTotalDuration.WithLabelValues(r.operation, "false").Observe(time.Since(start).Seconds())
 			return &RetryError{
 				Attempt:       attempt,
 				OriginalError: err,
@@ -128,6 +155,7 @@ func (r *Retrier) Do(ctx context.Context, op Operation) error {
 		case <-ctx.Done():
 			metrics.RetryAttemptsTotal.WithLabelValues(r.operation, attemptStr, "cancelled").Inc()
 			metrics.RetryOperationDuration.WithLabelValues(r.operation, attemptStr, "cancelled").Observe(time.Since(start).Seconds())
+			metrics.RetryTotalDuration.WithLabelValues(r.operation, "false").Observe(time.Since(start).Seconds())
 			return ctx.Err()
 		case <-time.After(delay):
 		}
@@ -136,6 +164,12 @@ func (r *Retrier) Do(ctx context.Context, op Operation) error {
 	// Обновляем процент успешных операций
 	successRate := float64(successfulAttempts) / float64(totalAttempts)
 	metrics.RetrySuccessRate.WithLabelValues(r.operation).Set(successRate)
+
+	// Записываем общую длительность неуспешной операции
+	metrics.RetryTotalDuration.WithLabelValues(r.operation, "false").Observe(time.Since(start).Seconds())
+
+	// Записываем распределение попыток
+	metrics.RetryAttemptsDistribution.WithLabelValues(r.operation).Observe(float64(r.config.MaxAttempts))
 
 	if lastErr != nil {
 		metrics.RetryAttemptsTotal.WithLabelValues(r.operation, strconv.Itoa(r.config.MaxAttempts), "max_attempts").Inc()
@@ -146,6 +180,23 @@ func (r *Retrier) Do(ctx context.Context, op Operation) error {
 	}
 
 	return ErrMaxAttemptsReached
+}
+
+// determineRetryReason определяет причину retry
+func determineRetryReason(err error, ctx context.Context) string {
+	if ctx.Err() != nil {
+		return "context_cancelled"
+	}
+	if IsTimeout(err) {
+		return "timeout"
+	}
+	if IsConnectionError(err) {
+		return "connection_error"
+	}
+	if IsValidationError(err) {
+		return "validation_error"
+	}
+	return "unknown"
 }
 
 // calculateDelay вычисляет задержку для следующей попытки

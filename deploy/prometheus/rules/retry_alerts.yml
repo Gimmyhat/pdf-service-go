@@ -1,0 +1,55 @@
+groups:
+  - name: retry_alerts
+    rules:
+      - alert: HighRetryRate
+        expr: |
+          sum(rate(retry_attempts_total{status="failed"}[5m])) by (operation)
+          / 
+          sum(rate(retry_attempts_total{status=~"failed|success"}[5m])) by (operation)
+          > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High retry rate for {{ $labels.operation }}"
+          description: "Operation {{ $labels.operation }} has a retry rate of {{ $value | humanizePercentage }} over the last 5 minutes"
+
+      - alert: ConsecutiveRetryFailures
+        expr: rate(retry_consecutive_failures[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Multiple consecutive retry failures for {{ $labels.operation }}"
+          description: "Operation {{ $labels.operation }} has {{ $value }} consecutive failures per second"
+
+      - alert: LongRetryRecoveryTime
+        expr: histogram_quantile(0.95, rate(retry_recovery_time_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Long retry recovery time for {{ $labels.operation }}"
+          description: "95th percentile of recovery time for {{ $labels.operation }} is {{ $value }} seconds"
+
+      - alert: HighRetryLatency
+        expr: |
+          histogram_quantile(0.95, rate(retry_total_duration_seconds_bucket{success="true"}[5m]))
+          > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High retry latency for {{ $labels.operation }}"
+          description: "95th percentile of total retry duration for {{ $labels.operation }} is {{ $value }} seconds"
+
+      - alert: RetryExhaustion
+        expr: |
+          sum(rate(retry_attempts_total{status="max_attempts"}[5m])) by (operation)
+          > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Retry exhaustion for {{ $labels.operation }}"
+          description: "Operation {{ $labels.operation }} is frequently exhausting all retry attempts" 
