@@ -1,0 +1,62 @@
+groups:
+  - name: connection_pool_alerts
+    rules:
+      - alert: HighConnectionPoolUsage
+        expr: |
+          connection_pool_active_connections / connection_pool_total_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High connection pool usage"
+          description: "Connection pool is using {{ $value | humanizePercentage }} of available connections"
+
+      - alert: ConnectionPoolExhausted
+        expr: |
+          rate(connection_pool_errors_total{type="exhausted"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Connection pool exhausted"
+          description: "Connection pool is frequently exhausting all available connections"
+
+      - alert: HighConnectionPoolWaitTime
+        expr: |
+          histogram_quantile(0.95, rate(connection_pool_get_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High connection pool wait time"
+          description: "95th percentile of connection pool wait time is {{ $value }} seconds"
+
+      - alert: ConnectionPoolErrors
+        expr: |
+          sum(rate(connection_pool_errors_total[5m])) by (type) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Connection pool errors detected"
+          description: "Connection pool is experiencing {{ $value }} errors per second of type {{ $labels.type }}"
+
+      - alert: StaleConnectionsRemoved
+        expr: |
+          rate(connection_pool_removed_connections_total{reason="stale"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of stale connections"
+          description: "Connection pool is removing {{ $value }} stale connections per second"
+
+      - alert: ConnectionPoolSizeFluctuating
+        expr: |
+          changes(connection_pool_total_connections[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Connection pool size is unstable"
+          description: "Connection pool size changed {{ $value }} times in the last 5 minutes" 
