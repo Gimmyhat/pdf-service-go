@@ -36,12 +36,12 @@ type Config struct {
 // DefaultConfig возвращает конфигурацию по умолчанию
 func DefaultConfig() Config {
 	return Config{
-		MinConns:    5,
-		MaxConns:    50,
-		MaxIdleTime: 5 * time.Minute,
+		MinConns:    20,
+		MaxConns:    100,
+		MaxIdleTime: 2 * time.Minute,
 		MaxLifetime: 30 * time.Minute,
-		DialTimeout: 5 * time.Second,
-		IdleTimeout: 30 * time.Second,
+		DialTimeout: 3 * time.Second,
+		IdleTimeout: 10 * time.Second,
 	}
 }
 

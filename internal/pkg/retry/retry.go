@@ -243,3 +243,11 @@ func classifyError(err error, ctx context.Context) string {
 		return "unknown"
 	}
 }
+
+// UpdateConfig обновляет конфигурацию retry
+func (r *Retrier) UpdateConfig(config RetryConfig) {
+	r.config.MaxAttempts = config.MaxAttempts
+	r.config.InitialDelay = config.InitialDelay
+	r.config.MaxDelay = config.MaxDelay
+	r.config.BackoffFactor = config.BackoffFactor
+}

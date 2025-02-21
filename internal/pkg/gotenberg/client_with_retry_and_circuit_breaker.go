@@ -3,6 +3,7 @@ package gotenberg
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	"pdf-service-go/internal/pkg/circuitbreaker"
@@ -43,10 +44,10 @@ func NewClientWithRetryAndCircuitBreaker(baseURL string) *ClientWithRetryAndCirc
 	retrier := retry.New(
 		"gotenberg",
 		logger.Log,
-		retry.WithMaxAttempts(getEnvIntWithDefault("GOTENBERG_RETRY_MAX_ATTEMPTS", 5)),
-		retry.WithInitialDelay(getEnvDurationWithDefault("GOTENBERG_RETRY_INITIAL_DELAY", 50*time.Millisecond)),
-		retry.WithMaxDelay(getEnvDurationWithDefault("GOTENBERG_RETRY_MAX_DELAY", 1*time.Second)),
-		retry.WithBackoffFactor(float64(getEnvIntWithDefault("GOTENBERG_RETRY_BACKOFF_FACTOR", 2))),
+		retry.WithMaxAttempts(3),
+		retry.WithInitialDelay(20*time.Millisecond),
+		retry.WithMaxDelay(500*time.Millisecond),
+		retry.WithBackoffFactor(1.5),
 	)
 
 	return &ClientWithRetryAndCircuitBreaker{
@@ -60,18 +61,90 @@ func NewClientWithRetryAndCircuitBreaker(baseURL string) *ClientWithRetryAndCirc
 func (c *ClientWithRetryAndCircuitBreaker) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 	var result []byte
 	err := c.retrier.Do(context.Background(), func(ctx context.Context) error {
+		// Проверяем состояние CB перед retry
+		if c.cb.State() == circuitbreaker.StateOpen {
+			return circuitbreaker.ErrCircuitOpen
+		}
+
+		// Выполняем операцию через circuit breaker
 		return c.cb.Execute(ctx, func() error {
 			// Сначала выполняем проверку здоровья без отслеживания в статистике
 			if err := c.client.HealthCheck(true); err != nil {
+				// Определяем тип ошибки и получаем соответствующую конфигурацию retry
+				errorType := classifyError(err)
+				config := retry.GetRetryConfig(errorType)
+
+				// Обновляем настройки retry для текущей ошибки
+				c.retrier.UpdateConfig(config)
 				return err
 			}
+
 			// Если проверка здоровья прошла успешно, выполняем конвертацию
 			var err error
 			result, err = c.client.ConvertDocxToPDF(docxPath)
+			if err != nil {
+				// Также классифицируем ошибку конвертации
+				errorType := classifyError(err)
+				config := retry.GetRetryConfig(errorType)
+				c.retrier.UpdateConfig(config)
+			}
 			return err
 		})
 	})
 	return result, err
+}
+
+// classifyError определяет тип ошибки для выбора стратегии retry
+func classifyError(err error) retry.ErrorType {
+	if err == nil {
+		return retry.ErrorTypeUnknown
+	}
+
+	switch {
+	case isConnectionError(err):
+		return retry.ErrorTypeConnection
+	case isTimeout(err):
+		return retry.ErrorTypeTimeout
+	case isValidationError(err):
+		return retry.ErrorTypeValidation
+	default:
+		return retry.ErrorTypeUnknown
+	}
+}
+
+// isConnectionError проверяет, является ли ошибка ошибкой соединения
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "network is unreachable") ||
+		strings.Contains(errStr, "connection reset by peer")
+}
+
+// isTimeout проверяет, является ли ошибка таймаутом
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "deadline exceeded") ||
+		strings.Contains(errStr, "context deadline exceeded")
+}
+
+// isValidationError проверяет, является ли ошибка ошибкой валидации
+func isValidationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "validation failed") ||
+		strings.Contains(errStr, "invalid input") ||
+		strings.Contains(errStr, "bad request") ||
+		strings.Contains(errStr, "400")
 }
 
 // State возвращает текущее состояние Circuit Breaker

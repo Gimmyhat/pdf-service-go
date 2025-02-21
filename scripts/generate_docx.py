@@ -12,13 +12,20 @@ logger = logging.getLogger(__name__)
 # Глобальный шаблон
 TEMPLATE = None
 
-def init_template(template_path):
-    """Инициализация глобального шаблона."""
+def init_app(template_path):
+    """Инициализация приложения."""
     global TEMPLATE
-    if TEMPLATE is None:
-        logger.info("Initializing template from %s", template_path)
+    logger.info("Initializing template from %s", template_path)
+    try:
         TEMPLATE = DocxTemplate(template_path)
-    return TEMPLATE
+        logger.info("Template initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize template: %s", e)
+        raise
+
+def check_template():
+    """Проверяет состояние шаблона."""
+    return TEMPLATE is not None
 
 def format_date(date_str):
     """Форматирует дату из строки ISO в формат DD.MM.YYYY."""
@@ -37,7 +44,7 @@ def format_date(date_str):
             date_obj = datetime.fromisoformat(str(date_str))
         return date_obj.strftime("%d.%m.%Y")
     except Exception as e:
-        logger.error(f"Error formatting date {date_str}: {e}")
+        logger.error("Error formatting date %s: %s", date_str, e)
         return str(date_str)
 
 def generate_applicant_info(data):
@@ -73,7 +80,7 @@ def generate_applicant_info(data):
                 
         return ''
     except Exception as e:
-        logger.error(f"Error generating applicant info: {e}")
+        logger.error("Error generating applicant info: %s", e)
         return ''
 
 def process_dates(data):
@@ -86,13 +93,14 @@ def process_dates(data):
             if 'informationDate' in item:
                 item['informationDate'] = format_date(item['informationDate'])
 
-def process_template(template_path, data, output_path):
+def process_template(data, output_path):
     """Обрабатывает шаблон и генерирует документ."""
     try:
         logger.info("Starting template processing")
         
-        # Получаем инициализированный шаблон
-        doc = init_template(template_path)
+        # Проверяем инициализацию шаблона
+        if TEMPLATE is None:
+            raise RuntimeError("Template not initialized")
         
         # Обрабатываем даты
         process_dates(data)
@@ -102,11 +110,11 @@ def process_template(template_path, data, output_path):
         
         # Рендерим документ
         logger.info("Rendering document")
-        doc.render(data)
+        TEMPLATE.render(data)
         
         # Сохраняем результат
         logger.info("Saving document to %s", output_path)
-        doc.save(output_path)
+        TEMPLATE.save(output_path)
         
         return True
     except Exception as e:
@@ -123,13 +131,17 @@ def main():
     output_path = sys.argv[3]
 
     try:
+        # Инициализируем шаблон при старте
+        init_app(template_path)
+
+        # Читаем данные
         with open(data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
     except Exception as e:
-        logger.error(f"Error reading data file: {e}")
+        logger.error("Error during initialization: %s", e)
         sys.exit(1)
 
-    if not process_template(template_path, data, output_path):
+    if not process_template(data, output_path):
         sys.exit(1)
 
 if __name__ == "__main__":
