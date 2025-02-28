@@ -20,19 +20,39 @@ make tidy
 make clean
 ```
 
-### Локальная разработка
+## Версионирование и деплой
+
+### Управление версиями
 ```bash
-# Запуск сервиса локально
-make dev
+# Создание нового образа с автоматической версией (YY.MM.DD.HHMM)
+# Собирает и отправляет образ в Docker Hub для использования как в Kubernetes, так и локально
+make new-version
 
-# Сборка и запуск всех сервисов через Docker Compose
-make run-local
+# Проверка текущей версии
+make get-version
+```
 
-# Сборка для локальной разработки
-make build-local
-
-# Деплой локально через docker-compose
+### Деплой
+```bash
+# Деплой в локальное окружение (использует образ из Docker Hub)
 make deploy-local
+
+# Деплой в тестовый кластер
+make deploy ENV=test
+
+# Деплой в продакшен кластер
+make deploy ENV=prod
+
+# Деплой с конкретной версией
+make deploy ENV=test VERSION=<версия>
+make deploy ENV=prod VERSION=<версия>
+```
+
+### Деплой хранилища
+```bash
+# Деплой хранилища в Kubernetes
+make deploy-storage ENV=test
+make deploy-storage ENV=prod
 ```
 
 ## Docker
@@ -45,35 +65,22 @@ make docker-build VERSION=<версия>
 # Отправка образа в Docker Hub
 make docker-push VERSION=<версия>
 
-# Создание нового образа с автоматической версией (YY.MM.DD.HHMM)
-make new-version
+# Сборка для локальной разработки
+make build-local
+```
 
-# Проверка текущей версии
-make get-version
+## Локальная разработка
+
+### Запуск сервисов
+```bash
+# Запуск сервиса локально (без Docker)
+make dev
+
+# Запуск всех сервисов через Docker Compose
+make run-local
 ```
 
 ## Kubernetes
-
-### Команды деплоя
-```bash
-# Универсальная команда деплоя
-make deploy ENV=test     # деплой в тестовый кластер
-make deploy ENV=prod     # деплой в продакшен кластер
-
-# Деплой с конкретной версией
-make deploy ENV=test VERSION=<версия>
-make deploy ENV=prod VERSION=<версия>
-
-# Деплой хранилища (PostgreSQL)
-make deploy-storage ENV=test
-make deploy-storage ENV=prod
-```
-
-Команда `deploy` автоматически:
-1. Проверяет и создает ConfigMap `nas-pdf-service-postgres-config` с настройками PostgreSQL
-2. Проверяет и создает ConfigMap `nas-pdf-service-templates` с DOCX шаблоном
-3. Разворачивает PostgreSQL и ждет его готовности
-4. Деплоит основной сервис с указанной версией
 
 ### Мониторинг и проверка статуса
 ```bash
@@ -115,7 +122,7 @@ make port-forward-jaeger
 
 Основные переменные, которые можно переопределить при запуске команд:
 
-- `VERSION` - версия образа (по умолчанию latest)
+- `VERSION` - версия образа (по умолчанию берется из current_version.txt или latest)
 - `ENV` - окружение (test/prod, по умолчанию test)
 - `NAMESPACE` - пространство имен в Kubernetes (по умолчанию print-serv)
 
@@ -134,13 +141,6 @@ make clear-stats ENV=test
 # Очистка статистики в продакшен окружении (требует подтверждения)
 make clear-stats ENV=prod
 ```
-
-Команда `clear-stats`:
-- Очищает все таблицы статистики (request_logs, docx_logs, gotenberg_logs, pdf_logs)
-- Требует указания окружения через параметр ENV
-- Для продакшен окружения запрашивает подтверждение
-- Использует существующую проверку окружения через `check-env`
-- Выводит информативные сообщения о процессе очистки
 
 ### Периоды статистики
 В веб-интерфейсе доступны следующие периоды для просмотра статистики:

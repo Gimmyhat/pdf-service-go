@@ -1,0 +1,80 @@
+# Глобальные настройки для тестового окружения
+global:
+  environment: test
+  namespace: print-serv
+
+# Настройки развертывания
+deployment:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Настройки приложения
+app:
+  maxConcurrentRequests: 4
+  docxTemplate:
+    cacheTTL: 5m
+  circuitBreaker:
+    docx:
+      failureThreshold: 5
+      resetTimeout: 5s
+      halfOpenMaxCalls: 3
+      successThreshold: 2
+    gotenberg:
+      failureThreshold: 5
+      resetTimeout: 5s
+      halfOpenMaxCalls: 3
+      successThreshold: 2
+  retry:
+    docx:
+      maxAttempts: 2
+      initialDelay: 50ms
+      maxDelay: 200ms
+      backoffFactor: 1.5
+    gotenberg:
+      maxAttempts: 2
+      initialDelay: 25ms
+      maxDelay: 100ms
+      backoffFactor: 1.5
+
+# Настройки PostgreSQL
+postgresql:
+  enabled: true
+  auth:
+    database: pdf_service
+    username: pdf_service
+    password: pdf_service
+  primary:
+    persistence:
+      size: 1Gi
+
+# Настройки мониторинга
+prometheus:
+  enabled: true
+  server:
+    persistentVolume:
+      size: 4Gi
+
+grafana:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 1Gi
+
+jaeger:
+  enabled: true
+  storage:
+    type: memory
+
+# Настройки автомасштабирования
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80 

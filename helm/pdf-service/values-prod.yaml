@@ -1,0 +1,116 @@
+# Глобальные настройки для продакшн окружения
+global:
+  environment: prod
+  namespace: print-serv
+
+# Настройки развертывания
+deployment:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+# Настройки приложения
+app:
+  maxConcurrentRequests: 8
+  docxTemplate:
+    cacheTTL: 10m
+  circuitBreaker:
+    docx:
+      failureThreshold: 10
+      resetTimeout: 10s
+      halfOpenMaxCalls: 5
+      successThreshold: 3
+    gotenberg:
+      failureThreshold: 10
+      resetTimeout: 10s
+      halfOpenMaxCalls: 5
+      successThreshold: 3
+  retry:
+    docx:
+      maxAttempts: 3
+      initialDelay: 50ms
+      maxDelay: 200ms
+      backoffFactor: 1.5
+    gotenberg:
+      maxAttempts: 3
+      initialDelay: 25ms
+      maxDelay: 100ms
+      backoffFactor: 1.5
+
+# Настройки PostgreSQL
+postgresql:
+  enabled: true
+  auth:
+    database: pdf_service
+    username: pdf_service
+    # Пароль должен быть установлен через Kubernetes Secrets
+    existingSecret: pdf-service-postgresql-secret
+  primary:
+    persistence:
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+# Настройки мониторинга
+prometheus:
+  enabled: true
+  server:
+    persistentVolume:
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+grafana:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+jaeger:
+  enabled: true
+  storage:
+    type: elasticsearch
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Настройки автомасштабирования
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 70
+
+# Настройки хранилища
+storage:
+  tmp:
+    sizeLimit: 4Gi
+  stats:
+    size: 10Gi 
