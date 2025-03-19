@@ -40,6 +40,26 @@ type Cache struct {
 	count  prometheus.Gauge
 }
 
+// Lock блокирует кэш для записи
+func (c *Cache) Lock() {
+	c.RWMutex.Lock()
+}
+
+// Unlock разблокирует кэш для записи
+func (c *Cache) Unlock() {
+	c.RWMutex.Unlock()
+}
+
+// RLock блокирует кэш для чтения
+func (c *Cache) RLock() {
+	c.RWMutex.RLock()
+}
+
+// RUnlock разблокирует кэш для чтения
+func (c *Cache) RUnlock() {
+	c.RWMutex.RUnlock()
+}
+
 // NewCache создает новый экземпляр кэша
 func NewCache(ttl time.Duration) *Cache {
 	return NewCacheWithMetrics(ttl, cacheHits, cacheMisses, cacheSize, cacheItemsCount)

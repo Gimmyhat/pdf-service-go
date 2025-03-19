@@ -399,57 +399,32 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 
 	// Запрашиваем распределение по дням недели
 	dayQuery := fmt.Sprintf(`
-		WITH day_counts AS (
-			SELECT 
-				EXTRACT(DOW FROM timestamp) as day_number,
-				COUNT(*) as count,
-				MAX(timestamp) as utc_time
-			FROM request_logs
-			%s
-			GROUP BY EXTRACT(DOW FROM timestamp)
-		)
 		SELECT 
-			day_number,
-			count,
-			utc_time
-		FROM day_counts
+			EXTRACT(DOW FROM timestamp)::int as day_number,
+			COUNT(*) as count,
+			MAX(timestamp) as utc_time
+		FROM request_logs
+		%s
+		GROUP BY EXTRACT(DOW FROM timestamp)::int
 		ORDER BY day_number
 	`, whereClause)
 
 	fmt.Printf("Executing day query: %s with params: %v\n", dayQuery, params)
 
-	var rows *sql.Rows
-	var err error
-	if len(params) > 0 {
-		rows, err = p.db.Query(dayQuery, params...)
-	} else {
-		rows, err = p.db.Query(dayQuery)
-	}
+	rows, err := p.db.Query(dayQuery, params...)
 	if err != nil {
-		return nil, fmt.Errorf("error querying days: %w", err)
+		return nil, fmt.Errorf("error querying day stats: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var dayNumber float64
+		var dayNumber int
 		var count uint64
-		var utcTime time.Time
-		if err := rows.Scan(&dayNumber, &count, &utcTime); err != nil {
-			return nil, fmt.Errorf("error scanning day row: %w", err)
+		var utcTime sql.NullTime
+		if scanErr := rows.Scan(&dayNumber, &count, &utcTime); scanErr != nil {
+			return nil, fmt.Errorf("error scanning day stats: %w", scanErr)
 		}
-
-		day := time.Weekday(int(dayNumber))
-		stats.Requests.RequestsByDay[day] = count
-
-		// Отладочный вывод
-		fmt.Printf("Day stats - Name: %s, Time: %s, Count: %d, Index: %d\n",
-			day.String(), utcTime.Format(time.RFC3339), count, int(dayNumber))
-	}
-
-	// Выводим агрегированную статистику
-	fmt.Printf("\nAggregated statistics:\n")
-	for day, count := range stats.Requests.RequestsByDay {
-		fmt.Printf("%s: Count=%d\n", day.String(), count)
+		stats.Requests.RequestsByDay[time.Weekday(dayNumber)] = count
 	}
 
 	// Запрашиваем распределение по часам

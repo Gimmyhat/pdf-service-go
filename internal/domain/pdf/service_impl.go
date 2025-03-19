@@ -30,7 +30,9 @@ type StatsHandler struct {
 
 func (h *StatsHandler) TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool) {
 	if !isHealthCheck {
-		h.stats.TrackGotenberg(duration, hasError)
+		if err := h.stats.TrackGotenberg(duration, hasError); err != nil {
+			logger.Log.Error("Failed to track Gotenberg metrics", zap.Error(err))
+		}
 	}
 }
 
@@ -129,10 +131,10 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	// Генерируем DOCX
 	log.Info("Starting DOCX generation")
 	docxStart := time.Now()
-	if err := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
-		log.Error("Failed to generate DOCX", zap.Error(err))
+	if genErr := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); genErr != nil {
+		log.Error("Failed to generate DOCX", zap.Error(genErr))
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
+		return nil, fmt.Errorf("failed to generate DOCX: %w", genErr)
 	}
 	docxGenerationTime = time.Since(docxStart)
 
