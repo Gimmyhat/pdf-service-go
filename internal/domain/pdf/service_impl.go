@@ -21,6 +21,7 @@ import (
 type ServiceImpl struct {
 	gotenbergClient *gotenberg.ClientWithCircuitBreaker
 	docxGenerator   *docxgen.Generator
+	stats           *statistics.Statistics
 }
 
 type StatsHandler struct {
@@ -43,6 +44,7 @@ func NewService(gotenbergURL string) Service {
 	return &ServiceImpl{
 		gotenbergClient: client,
 		docxGenerator:   docxgen.NewGenerator("scripts/generate_docx.py"),
+		stats:           statistics.GetInstance(),
 	}
 }
 
@@ -178,4 +180,17 @@ func (s *ServiceImpl) GetDocxGeneratorState() circuitbreaker.State {
 // IsDocxGeneratorHealthy возвращает true, если Circuit Breaker для генератора DOCX в здоровом состоянии
 func (s *ServiceImpl) IsDocxGeneratorHealthy() bool {
 	return s.docxGenerator.IsHealthy()
+}
+
+func (h *ServiceImpl) ConvertDocxToPDF(ctx context.Context, docxPath string) ([]byte, error) {
+	start := time.Now()
+	pdfData, err := h.gotenbergClient.ConvertDocxToPDF(docxPath)
+	duration := time.Since(start)
+	hasError := err != nil
+
+	if trackErr := h.stats.TrackGotenberg(duration, hasError); trackErr != nil {
+		logger.Log.Error("Failed to track Gotenberg metrics", zap.Error(trackErr))
+	}
+
+	return pdfData, err
 }

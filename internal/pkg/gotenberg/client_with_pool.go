@@ -101,3 +101,10 @@ func (c *ClientWithPool) Close() error {
 func (c *ClientWithPool) Stats() connpool.Stats {
 	return c.pool.Stats()
 }
+
+func (c *ClientWithPool) newClient(conn *connpool.Connection) *Client {
+	return &Client{
+		baseURL: c.baseURL,
+		client:  conn.GetConn().(*http.Client),
+	}
+}

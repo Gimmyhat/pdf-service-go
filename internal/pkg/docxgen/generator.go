@@ -309,14 +309,6 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	return nil
 }
 
-// getStatus возвращает статус операции для метрик
-func (g *Generator) getStatus(err error) string {
-	if err == nil {
-		return "success"
-	}
-	return "error"
-}
-
 // State возвращает текущее состояние Circuit Breaker
 func (g *Generator) State() circuitbreaker.State {
 	return g.cb.State()

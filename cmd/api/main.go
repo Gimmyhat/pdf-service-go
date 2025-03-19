@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	_ "net/http/pprof" // Импортируем pprof
 	"os"
@@ -16,15 +17,11 @@ func main() {
 	runtime.SetMutexProfileFraction(1)
 	runtime.SetBlockProfileRate(1)
 
-	// Инициализируем логгер
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	if err := logger.Init(logLevel); err != nil {
-		panic("failed to initialize logger: " + err.Error())
-	}
-	defer logger.Log.Sync()
+	defer func() {
+		if err := logger.Log.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
+		}
+	}()
 
 	// Инициализируем статистику
 	statsConfig := statistics.Config{
