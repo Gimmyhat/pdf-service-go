@@ -4,7 +4,8 @@
         check-storage check-test check-prod check-grafana check-prometheus check-jaeger \
         deploy deploy-local deploy-storage \
         dev run-local port-forward-grafana port-forward-prometheus port-forward-jaeger \
-        clear-stats
+        clear-stats \
+        helm-repos helm-deps helm-template helm-lint helm-deploy helm-uninstall helm-status helm-history helm-rollback
 
 # Основные переменные
 APP_NAME = pdf-service-go
@@ -96,7 +97,7 @@ deploy-storage: check-env
 	@echo "Deploying storage for $(ENV) environment..."
 	kubectl config use-context $(CONTEXT)
 	kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE)
-	kubectl apply -f k8s/postgres-deployment.yaml -n $(NAMESPACE)
+	kubectl apply -f k8s/nas-pdf-service-postgres-deployment.yaml -n $(NAMESPACE)
 	@echo "Storage deployment completed"
 
 # Проверка хранилища
@@ -109,16 +110,16 @@ check-storage: check-env
 check-test: check-storage
 	@echo "Checking test cluster ($(TEST_CONTEXT)) status..."
 	kubectl config use-context $(TEST_CONTEXT)
-	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
-	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
 	kubectl get hpa -n $(NAMESPACE)
 
 # Проверка продакшн окружения
 check-prod: check-storage
 	@echo "Checking production cluster ($(PROD_CONTEXT)) status..."
 	kubectl config use-context $(PROD_CONTEXT)
-	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
-	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
 	kubectl get hpa -n $(NAMESPACE)
 
 # ============================================================================
@@ -168,10 +169,23 @@ deploy: check-env
 		fi; \
 	fi; \
 	kubectl config use-context $(CONTEXT); \
+	echo "Applying all configurations..."; \
+	kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-templates-configmap.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n $(NAMESPACE); \
+	echo "Updating deployment image..."; \
 	kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); \
+	echo "Restarting deployments..."; \
 	kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); \
+	kubectl rollout restart deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); \
+	kubectl rollout restart deployment/nas-pdf-service-prometheus -n $(NAMESPACE); \
+	echo "Waiting for rollouts to complete..."; \
 	kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); \
+	kubectl rollout status deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); \
+	kubectl rollout status deployment/nas-pdf-service-prometheus -n $(NAMESPACE); \
 	echo "Deployment to $(ENV) completed successfully"; \
 	echo "Use 'make status ENV=$(ENV)' to check deployment status"; \
 	echo "Use 'make logs ENV=$(ENV)' to view logs"
@@ -179,11 +193,22 @@ deploy: check-env
 # Деплой локально через docker-compose
 deploy-local:
 	@echo "Deploying services locally..."
-	docker-compose down
-	@echo "Stopped existing services"
-	docker-compose up -d
-	@echo "Started services"
-	@echo "Checking services status..."
+	@DEPLOY_VERSION="$(VERSION)"; \
+	if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "latest" ]; then \
+		if [ -f current_version.txt ]; then \
+			DEPLOY_VERSION=$$(cat current_version.txt); \
+			echo "Using version from current_version.txt: $$DEPLOY_VERSION"; \
+		else \
+			echo "Error: No version specified and no current_version.txt found. Please run 'make new-version' first or specify VERSION."; \
+			exit 1; \
+		fi; \
+	else \
+		echo "Using specified version: $$DEPLOY_VERSION"; \
+	fi; \
+	VERSION=$$DEPLOY_VERSION docker-compose down; \
+	VERSION=$$DEPLOY_VERSION docker-compose up -d; \
+	echo "Started services with version $(VERSION)"
+	echo "Checking services status..."
 	docker-compose ps
 
 # ============================================================================
@@ -253,5 +278,76 @@ clear-stats: check-env
 	@echo "Getting PostgreSQL pod name..."
 	@POSTGRES_POD=$$(kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service-postgres -o jsonpath='{.items[0].metadata.name}') && \
 	echo "Clearing statistics tables..." && \
-	kubectl exec -n $(NAMESPACE) $$POSTGRES_POD -- psql -U pdf_service -d pdf_service_stats -c "TRUNCATE TABLE request_logs, docx_logs, gotenberg_logs, pdf_logs;"
-	@echo "Statistics cleared successfully for $(ENV) environment" 
+	kubectl exec -n $(NAMESPACE) $$POSTGRES_POD -- psql -U pdf_service -d pdf_service -c "TRUNCATE TABLE request_logs, docx_logs, gotenberg_logs, pdf_logs;"
+	@echo "Statistics cleared successfully for $(ENV) environment"
+
+# ============================================================================
+# Helm команды
+# ============================================================================
+
+# Добавление репозиториев Helm
+helm-repos:
+	helm repo add bitnami https://raw.githubusercontent.com/bitnami/charts/archive-full-index/bitnami
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+	helm repo add grafana https://grafana.github.io/helm-charts
+	helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+	helm repo update
+
+# Установка зависимостей Helm
+helm-deps: helm-repos
+	cd helm/pdf-service && helm dependency update
+
+# Проверка шаблонов Helm
+helm-template: helm-deps
+	helm template pdf-service helm/pdf-service --values helm/pdf-service/values-$(ENV).yaml
+
+# Проверка синтаксиса Helm
+helm-lint: helm-deps
+	helm lint helm/pdf-service --values helm/pdf-service/values-$(ENV).yaml
+
+# Установка/обновление через Helm
+helm-deploy: check-env helm-deps
+	@echo "Deploying to $(ENV) environment..."
+	@if [ "$(ENV)" = "prod" ]; then \
+		powershell -Command $$confirm = Read-Host -Prompt "Are you sure you want to deploy to production? (y/N)"; \
+		if ($$confirm -ne "y") { \
+			echo "Deployment cancelled."; \
+			exit 1; \
+		} \
+	fi
+	helm upgrade --install pdf-service helm/pdf-service \
+		--namespace $(NAMESPACE) \
+		--values helm/pdf-service/values-$(ENV).yaml \
+		--set image.tag=$(VERSION)
+
+# Удаление через Helm
+helm-uninstall: check-env
+	@echo "Uninstalling from $(ENV) environment..."
+	@if [ "$(ENV)" = "prod" ]; then \
+		powershell -Command $$confirm = Read-Host -Prompt "Are you sure you want to uninstall from production? (y/N)"; \
+		if ($$confirm -ne "y") { \
+			echo "Uninstall cancelled."; \
+			exit 1; \
+		} \
+	fi
+	helm uninstall pdf-service --namespace $(NAMESPACE)
+
+# Получение статуса Helm релиза
+helm-status: check-env
+	helm status pdf-service --namespace $(NAMESPACE)
+
+# Получение истории релизов Helm
+helm-history: check-env
+	helm history pdf-service --namespace $(NAMESPACE)
+
+# Откат к предыдущей версии
+helm-rollback: check-env
+	@echo "Rolling back to previous version in $(ENV) environment..."
+	@if [ "$(ENV)" = "prod" ]; then \
+		powershell -Command $$confirm = Read-Host -Prompt "Are you sure you want to rollback production? (y/N)"; \
+		if ($$confirm -ne "y") { \
+			echo "Rollback cancelled."; \
+			exit 1; \
+		} \
+	fi
+	helm rollback pdf-service --namespace $(NAMESPACE) 

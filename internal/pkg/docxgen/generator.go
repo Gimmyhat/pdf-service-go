@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,7 +170,7 @@ func NewGenerator(scriptPath string) *Generator {
 		cb:           cb,
 		cache:        cache.NewCache(config.CacheTTL),
 		tempManager:  tempManager,
-		gotenbergURL: getEnvWithDefault("GOTENBERG_URL", "http://nas-gotenberg:3000"),
+		gotenbergURL: getEnvWithDefault("GOTENBERG_API_URL", "http://nas-pdf-service-gotenberg:3000"),
 		retrier:      retrier,
 	}
 }
@@ -190,7 +189,7 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	template, err := g.cache.Get(ctx, templateName)
 	if err != nil {
 		// Если шаблона нет в кэше, читаем его и сохраняем
-		template, err = ioutil.ReadFile(templatePath)
+		template, err = os.ReadFile(templatePath)
 		if err != nil {
 			logger.Error("Failed to read template",
 				zap.Error(err),
@@ -248,44 +247,14 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 
 			// Устанавливаем переменную окружения для параллельной обработки
 			cmd := exec.CommandContext(ctx, pythonCmd, g.config.ScriptPath, tempPath, dataPath, outputDocx)
-			cmd.Env = append(os.Environ(), "DOCX_PARALLEL_PROCESSING=true")
-
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				logger.Error("Failed to generate DOCX",
-					zap.Error(err),
+			output, cmdErr := cmd.CombinedOutput()
+			if cmdErr != nil {
+				logger.Error("Failed to execute Python script",
+					zap.Error(cmdErr),
 					zap.String("output", string(output)),
-					zap.String("template", tempPath),
-					zap.String("data", dataPath),
-					zap.String("output_docx", outputDocx),
-					zap.String("python_implementation", pythonCmd),
 				)
 				docxGenerationErrors.WithLabelValues("python_error", pythonImpl).Inc()
-				return err
-			}
-
-			// Используем буферизированное копирование для выходного файла
-			outputFile, err := os.Create(outputPath)
-			if err != nil {
-				logger.Error("Failed to create output file",
-					zap.Error(err))
-				return err
-			}
-			defer outputFile.Close()
-
-			inputFile, err := os.Open(outputDocx)
-			if err != nil {
-				logger.Error("Failed to open generated DOCX",
-					zap.Error(err))
-				return err
-			}
-			defer inputFile.Close()
-
-			bufCopy := make([]byte, 1024*1024) // 1MB buffer
-			if _, err = io.CopyBuffer(outputFile, inputFile, bufCopy); err != nil {
-				logger.Error("Failed to copy output file",
-					zap.Error(err))
-				return err
+				return cmdErr
 			}
 
 			// Обновляем метрики
@@ -293,7 +262,7 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 			docxGenerationDuration.WithLabelValues("success", pythonImpl).Observe(duration)
 			docxGenerationTotal.WithLabelValues("success", pythonImpl).Inc()
 
-			if fi, err := os.Stat(outputPath); err == nil {
+			if fi, statErr := os.Stat(outputPath); statErr == nil {
 				docxFileSize.WithLabelValues("success", pythonImpl).Observe(float64(fi.Size()))
 			}
 
@@ -307,14 +276,6 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 	}
 
 	return nil
-}
-
-// getStatus возвращает статус операции для метрик
-func (g *Generator) getStatus(err error) string {
-	if err == nil {
-		return "success"
-	}
-	return "error"
 }
 
 // State возвращает текущее состояние Circuit Breaker

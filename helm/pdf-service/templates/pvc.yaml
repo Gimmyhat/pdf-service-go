@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pdf-service.fullname" . }}-stats-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "pdf-service.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.storage.stats.size }} 

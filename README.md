@@ -1,158 +1,103 @@
-# PDF Service Go
+# PDF Service
 
-Сервис для генерации PDF документов на основе DOCX шаблонов.
+Сервис для генерации PDF документов из DOCX шаблонов с использованием Gotenberg.
 
-## Возможности
+## Особенности
 
-- Генерация DOCX документов из шаблонов с использованием Python docxtpl
 - Конвертация DOCX в PDF с помощью Gotenberg
-- Поддержка циклов и условий в шаблонах
-- Работа в Docker контейнерах
-- Кэширование шаблонов DOCX для оптимизации производительности
-- Метрики и мониторинг через Prometheus
+- Поддержка шаблонов DOCX с использованием Python (docxtpl)
+- Мониторинг с Prometheus и Grafana
+- Трейсинг с OpenTelemetry и Jaeger
+- Circuit Breaker и Retry механизмы
+- Поддержка Kubernetes (Helm charts)
+- Docker Compose для локальной разработки
 
 ## Требования
 
+- Go 1.22+
 - Docker
-- Docker Compose
+- Python 3.9+ (PyPy)
+- Kubernetes (для production)
+- Helm 3.x (для production)
 
-## Установка и запуск
+## Быстрый старт
 
 1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/Gimmyhat/pdf-service-go.git
+git clone https://github.com/gimmyhat/pdf-service-go.git
 cd pdf-service-go
 ```
 
-2. Переключитесь на нужную ветку:
-   - `main` - стабильная версия
-   - `dev` - ветка разработки
+2. Создайте новую версию и запустите сервисы:
 ```bash
-git checkout dev  # для версии в разработке
+make new-version
+make deploy-local
 ```
 
-3. Создайте шаблон DOCX в директории `internal/domain/pdf/templates/template.docx`
-
-4. Запустите сервисы:
+3. Проверьте работу сервиса:
 ```bash
-docker-compose up --build
+curl -X POST -H "Content-Type: application/json" --data-binary "@example.json" http://localhost:8080/api/v1/docx -o result.pdf
 ```
-
-## Использование
-
-Отправьте POST запрос на `/api/v1/docx` с JSON данными:
-
-```bash
-curl -X POST --data-binary @test.json \
-  -H "Content-Type: application/json" \
-  http://localhost:8080/api/v1/docx \
-  -o result.pdf
-```
-
-Пример JSON данных (`test.json`):
-```json
-{
-    "operation": "CREATE",
-    "id": "ЕФГИ-701-25",
-    "email": "test@example.com",
-    "phone": "1234567890",
-    "applicantType": "INDIVIDUAL",
-    "individualInfo": {
-        "esia": "1001670968",
-        "name": "Иванов Иван Иванович",
-        "addressDocument": null
-    },
-    "purposeOfGeoInfoAccess": "Учебные цели",
-    "purposeOfGeoInfoAccessDictionary": {
-        "value": "Учебные цели"
-    },
-    "registryItems": [
-        {
-            "id": 1243002,
-            "name": "Тестовый документ",
-            "informationDate": null,
-            "invNumber": "2871",
-            "note": null
-        }
-    ],
-    "creationDate": "2025-01-29T10:08:39.725+03:00",
-    "geoInfoStorageOrganization": {
-        "code": "2",
-        "value": "ФГБУ \"Организация\""
-    }
-}
-```
-
-## Структура проекта
-
-- `cmd/api` - точка входа приложения
-- `internal/api` - HTTP сервер и обработчики
-- `internal/domain/pdf` - бизнес-логика и модели
-- `internal/pkg/gotenberg` - клиент для работы с Gotenberg
-- `scripts` - Python скрипты для работы с DOCX
-- `docker` - файлы для сборки Docker образов
 
 ## Разработка
 
-Проект использует GitFlow для управления версиями:
+Основные команды:
 
-- `main` - основная ветка, содержит стабильную версию
-- `dev` - ветка разработки, содержит последние изменения
-- Для новых функций создавайте ветки `feature/*` от `dev`
-- Для исправления ошибок создавайте ветки `bugfix/*` от `dev`
-- Для срочных исправлений в production создавайте ветки `hotfix/*` от `main`
-
-### Процесс разработки
-
-1. Создайте новую ветку от `dev`:
 ```bash
-git checkout dev
-git pull
-git checkout -b feature/my-feature  # или bugfix/my-fix
+# Сборка
+make build
+
+# Тесты
+make test
+
+# Линтер
+make lint
+
+# Локальный запуск
+make dev
+
+# Запуск в Docker
+make run-local
 ```
 
-2. Внесите изменения и закоммитьте их:
+## Деплой
+
+### Локальное окружение
+
 ```bash
-git add .
-git commit -m "Описание изменений"
+# Создание новой версии
+make new-version
+
+# Деплой локально
+make deploy-local
 ```
 
-3. Отправьте изменения в репозиторий:
+### Kubernetes
+
 ```bash
-git push -u origin feature/my-feature
+# Деплой в test
+make deploy ENV=test
+
+# Деплой в production
+make deploy ENV=prod
+
+# Очистка статистики
+make clear-stats ENV=test  # для тестового окружения
+make clear-stats ENV=prod  # для продакшена (требует подтверждения)
 ```
 
-4. Создайте Pull Request в ветку `dev`
+## Мониторинг
 
-## Конфигурация
+- Grafana: http://localhost:3000
+- Prometheus: http://localhost:9090
+- Jaeger UI: http://localhost:16686
 
-Сервис настраивается через переменные окружения:
+## Документация
 
-### Основные настройки
-- `PORT` - порт для HTTP сервера (по умолчанию: 8080)
-- `LOG_LEVEL` - уровень логирования (по умолчанию: info)
+Дополнительная документация:
+- [Команды (COMMANDS.md)](COMMANDS.md)
+- [План развития (ROADMAP.md)](ROADMAP.md)
 
-### Настройки кэширования
-- `DOCX_TEMPLATE_CACHE_TTL` - время жизни кэшированных шаблонов (по умолчанию: 5m)
+## Лицензия
 
-### Circuit Breaker
-- `DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD` - порог ошибок (по умолчанию: 3)
-- `DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT` - таймаут сброса (по умолчанию: 5s)
-- `DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS` - максимум вызовов в полуоткрытом состоянии (по умолчанию: 2)
-- `DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD` - порог успешных вызовов (по умолчанию: 2)
-
-## Метрики
-
-Сервис предоставляет следующие метрики Prometheus:
-
-### Метрики кэширования
-- `template_cache_hits_total` - количество попаданий в кэш шаблонов
-- `template_cache_misses_total` - количество промахов кэша шаблонов
-- `template_cache_size_bytes` - размер кэшированных шаблонов
-- `template_cache_items_total` - общее количество элементов в кэше
-
-### Метрики генерации документов
-- `docx_generation_duration_seconds` - время генерации DOCX
-- `docx_generation_errors_total` - количество ошибок генерации
-- `docx_generation_total` - общее количество попыток генерации
-- `docx_file_size_bytes` - размер сгенерированных файлов
+MIT

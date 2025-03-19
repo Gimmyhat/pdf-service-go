@@ -5,6 +5,11 @@ import os
 from docxtpl import DocxTemplate
 import logging
 from datetime import datetime
+from pathlib import Path
+import requests
+import PyPDF2
+from docx import Document
+from docx.shared import Inches
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,10 +27,6 @@ def init_app(template_path):
     except Exception as e:
         logger.error("Failed to initialize template: %s", e)
         raise
-
-def check_template():
-    """Проверяет состояние шаблона."""
-    return TEMPLATE is not None
 
 def format_date(date_str):
     """Форматирует дату из строки ISO в формат DD.MM.YYYY."""
@@ -93,32 +94,132 @@ def process_dates(data):
             if 'informationDate' in item:
                 item['informationDate'] = format_date(item['informationDate'])
 
-def process_template(data, output_path):
-    """Обрабатывает шаблон и генерирует документ."""
+def count_pdf_pages(docx_path):
+    """Конвертирует DOCX в PDF и считает страницы."""
     try:
-        logger.info("Starting template processing")
+        # URL для Gotenberg из переменной окружения или по умолчанию
+        gotenberg_url = os.getenv('GOTENBERG_URL', 'http://localhost:3000')
+        endpoint = f"{gotenberg_url}/forms/libreoffice/convert"
+
+        logger.info(f"Converting {docx_path} to PDF using Gotenberg at {endpoint}")
+        logger.info(f"DOCX file size: {os.path.getsize(docx_path)} bytes")
         
-        # Проверяем инициализацию шаблона
-        if TEMPLATE is None:
-            raise RuntimeError("Template not initialized")
+        # Готовим файл для отправки
+        with open(docx_path, 'rb') as f:
+            files = {'file': (os.path.basename(docx_path), f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
+            
+            # Отправляем запрос в Gotenberg
+            logger.info("Sending request to Gotenberg...")
+            response = requests.post(endpoint, files=files)
+            logger.info(f"Gotenberg response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                # Сохраняем PDF во временный файл
+                pdf_path = str(Path(docx_path).with_suffix('.pdf'))
+                with open(pdf_path, 'wb') as f:
+                    f.write(response.content)
+                
+                pdf_size = os.path.getsize(pdf_path)
+                logger.info(f"Generated PDF size: {pdf_size} bytes")
+                
+                # Читаем количество страниц из PDF
+                with open(pdf_path, 'rb') as f:
+                    pdf = PyPDF2.PdfReader(f)
+                    num_pages = len(pdf.pages)
+                    logger.info(f"PDF page count: {num_pages}")
+                    
+                    # Проверяем размер первой и последней страницы
+                    first_page = pdf.pages[0]
+                    last_page = pdf.pages[-1]
+                    logger.info(f"First page size: {first_page.mediabox}")
+                    logger.info(f"Last page size: {last_page.mediabox}")
+                
+                # Удаляем временный PDF файл
+                os.remove(pdf_path)
+                return num_pages
+            else:
+                logger.error(f"Gotenberg conversion failed: {response.status_code}")
+                if response.content:
+                    logger.error(f"Gotenberg error: {response.content.decode('utf-8', errors='ignore')}")
+                return None
+    except Exception as e:
+        logger.error(f"Error converting to PDF: {e}", exc_info=True)
+        return None
+
+def count_docx_pages(docx_path):
+    """Подсчет страниц в DOCX файле напрямую."""
+    try:
+        doc = Document(docx_path)
         
-        # Обрабатываем даты
+        # Получаем размер страницы из секций документа
+        section = doc.sections[0]
+        page_height = section.page_height
+        page_margin_top = section.top_margin
+        page_margin_bottom = section.bottom_margin
+        available_height = page_height - page_margin_top - page_margin_bottom
+        
+        total_height = 0
+        for paragraph in doc.paragraphs:
+            # Учитываем высоту каждого параграфа
+            if paragraph.runs:  # Если параграф не пустой
+                total_height += paragraph.runs[0].font.size or 12  # Размер шрифта в твипах
+        
+        # Учитываем таблицы
+        for table in doc.tables:
+            for row in table.rows:
+                total_height += row.height or Inches(0.3)  # Примерная высота строки
+        
+        # Конвертируем твипы в дюймы и считаем страницы
+        total_pages = int((total_height / 20) / (available_height / 914400) + 0.5)  # 914400 твипов = 1 дюйм
+        
+        logger.info(f"DOCX direct page count: {total_pages}")
+        return max(1, total_pages)  # Минимум 1 страница
+        
+    except Exception as e:
+        logger.error(f"Error counting DOCX pages directly: {e}", exc_info=True)
+        return None
+
+def process_template(data, output_path):
+    """Обработка шаблона и сохранение результата."""
+    global TEMPLATE
+    
+    if not TEMPLATE:
+        logger.error("Template not initialized")
+        raise ValueError("Template not initialized")
+        
+    try:
+        # Обрабатываем даты и генерируем информацию о заявителе
         process_dates(data)
-        
-        # Генерируем информацию о заявителе
         data['applicant_info'] = generate_applicant_info(data)
         
-        # Рендерим документ
-        logger.info("Rendering document")
+        # Первый рендеринг с временным значением num_pages
+        data['num_pages'] = 0
+        logger.info("First render with num_pages = 0")
         TEMPLATE.render(data)
-        
-        # Сохраняем результат
-        logger.info("Saving document to %s", output_path)
         TEMPLATE.save(output_path)
         
-        return True
+        # Пробуем получить количество страниц напрямую из DOCX
+        pages = count_docx_pages(output_path)
+        
+        # Если не получилось, используем метод через PDF
+        if pages is None:
+            logger.info("Falling back to PDF page counting method")
+            pages = count_pdf_pages(output_path)
+            
+        if pages is not None:
+            # Вычитаем 1 страницу (сопроводительная записка)
+            data['num_pages'] = pages - 1
+            logger.info(f"Second render with page count (excluding cover): {pages-1}")
+            TEMPLATE.render(data)
+            TEMPLATE.save(output_path)
+            logger.info("Document generated successfully")
+            return True
+        else:
+            logger.error("Could not determine page count")
+            return False
+            
     except Exception as e:
-        logger.error("Error processing template: %s", e)
+        logger.error(f"Error processing template: {e}")
         return False
 
 def main():

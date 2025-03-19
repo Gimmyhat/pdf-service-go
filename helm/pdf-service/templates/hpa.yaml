@@ -1,0 +1,46 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: {{ include "pdf-service.hpa.apiVersion" . }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "pdf-service.fullname" . }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "pdf-service.labels" . | nindent 4 }}
+spec:
+  {{- if eq (include "pdf-service.hpa.apiVersion" .) "autoscaling/v2" }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "pdf-service.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  {{- else }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "pdf-service.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  targetCPUUtilizationPercentage: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  targetMemoryUtilizationPercentage: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- end }}
+  {{- end }}
+{{- end }} 

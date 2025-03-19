@@ -68,11 +68,7 @@ func (c *ClientWithPool) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 	defer c.pool.Put(conn)
 
 	// Используем базовый клиент для конвертации
-	client := &Client{
-		baseURL: c.baseURL,
-		client:  conn.GetConn().(*http.Client),
-	}
-
+	client := c.newClient(conn)
 	return client.ConvertDocxToPDF(docxPath)
 }
 
@@ -84,11 +80,7 @@ func (c *ClientWithPool) HealthCheck() error {
 	}
 	defer c.pool.Put(conn)
 
-	client := &Client{
-		baseURL: c.baseURL,
-		client:  conn.GetConn().(*http.Client),
-	}
-
+	client := c.newClient(conn)
 	return client.HealthCheck(true)
 }
 
@@ -100,4 +92,16 @@ func (c *ClientWithPool) Close() error {
 // Stats возвращает статистику пула соединений
 func (c *ClientWithPool) Stats() connpool.Stats {
 	return c.pool.Stats()
+}
+
+func (c *ClientWithPool) newClient(conn *connpool.Connection) *Client {
+	clientConn := conn.GetConn()
+	httpClient, ok := clientConn.(*http.Client)
+	if !ok {
+		return nil
+	}
+	return &Client{
+		baseURL: c.baseURL,
+		client:  httpClient,
+	}
 }

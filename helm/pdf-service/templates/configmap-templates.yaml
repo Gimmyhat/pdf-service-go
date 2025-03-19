@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pdf-service.fullname" . }}-templates
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "pdf-service.labels" . | nindent 4 }}
+data:
+  template.docx: |-
+    {{ .Files.Get "files/template.docx" | b64enc }} 

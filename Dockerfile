@@ -1,5 +1,8 @@
 FROM golang:1.22-bullseye AS builder
 
+# Добавляем аргумент для версии
+ARG VERSION=latest
+
 WORKDIR /app
 
 # Копируем только файлы, необходимые для загрузки зависимостей
@@ -9,10 +12,14 @@ RUN go mod download
 # Копируем исходный код
 COPY . .
 
-# Собираем приложение
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o main cmd/api/main.go
+# Собираем приложение с версией
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s -X main.Version=${VERSION}" -o main cmd/api/main.go
 
 FROM pypy:3.9-slim-bullseye
+
+# Передаем версию во второй этап
+ARG VERSION
+ENV APP_VERSION=${VERSION}
 
 WORKDIR /app
 

@@ -93,15 +93,15 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 
 	// Используем буферизированное копирование для улучшения производительности
 	copyBuf := make([]byte, 64*1024)
-	if _, err := io.CopyBuffer(part, file, copyBuf); err != nil {
+	if _, copyErr := io.CopyBuffer(part, file, copyBuf); copyErr != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to copy file content: %w", err)
+		return nil, fmt.Errorf("failed to copy file content: %w", copyErr)
 	}
 
 	// Закрываем writer
-	if err := writer.Close(); err != nil {
+	if closeErr := writer.Close(); closeErr != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to close writer: %w", err)
+		return nil, fmt.Errorf("failed to close writer: %w", closeErr)
 	}
 
 	// Создаем запрос к Gotenberg с оптимизированными заголовками

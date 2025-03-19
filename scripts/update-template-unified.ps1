@@ -148,7 +148,7 @@ binaryData:
 "@
 
     # Save to file
-    $outputPath = "k8s/templates-configmap-filled.yaml"
+    $outputPath = "k8s/nas-pdf-service-templates-configmap-filled.yaml"
     Write-Host "Saving configuration to file: $outputPath"
     $yaml | Set-Content -Path $outputPath -NoNewline
 

@@ -254,8 +254,3 @@ func formatDuration(duration time.Duration) string {
 	seconds := int(duration.Seconds()) % 60
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 }
-
-// formatTime форматирует время в строку в формате ISO 8601
-func formatTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
-}
