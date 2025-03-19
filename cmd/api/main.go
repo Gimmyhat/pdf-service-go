@@ -6,6 +6,11 @@ import (
 	_ "net/http/pprof" // Импортируем pprof
 	"os"
 	"os/signal"
+	"syscall"
+	"time"
+
+	"runtime"
+
 	"pdf-service-go/internal/api/handlers"
 	"pdf-service-go/internal/api/middleware"
 	"pdf-service-go/internal/api/server"
@@ -15,9 +20,6 @@ import (
 	"pdf-service-go/internal/pkg/gotenberg"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
-	"runtime"
-	"syscall"
-	"time"
 )
 
 func main() {
