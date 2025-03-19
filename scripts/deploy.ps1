@@ -50,13 +50,13 @@ if ($LASTEXITCODE -ne 0) { throw "Ошибка при применении deplo
 kubectl --context $Cluster apply -f k8s/service.yaml
 if ($LASTEXITCODE -ne 0) { throw "Ошибка при применении service" }
 
-kubectl --context $Cluster apply -f k8s/hpa.yaml
+kubectl --context $Cluster apply -f k8s/nas-pdf-service-hpa.yaml
 if ($LASTEXITCODE -ne 0) { throw "Ошибка при применении HPA" }
 
 # Обновляем ConfigMap с шаблоном
 Write-Host "Updating template ConfigMap..."
 ./update-configmap.ps1
-kubectl --context $Cluster apply -f k8s/templates-configmap-filled.yaml
+kubectl --context $Cluster apply -f k8s/nas-pdf-service-templates-configmap-filled.yaml
 if ($LASTEXITCODE -ne 0) { throw "Ошибка при обновлении ConfigMap" }
 
 # Перезапускаем поды

@@ -70,8 +70,8 @@ spec:
           value: "5"
         - name: DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD
           value: "3"
-        - name: GOTENBERG_URL
-          value: "http://nas-gotenberg:3000"
+        - name: GOTENBERG_API_URL
+          value: "http://nas-pdf-service-gotenberg:3000"
         - name: CIRCUIT_BREAKER_FAILURE_THRESHOLD
           value: "10"
         - name: CIRCUIT_BREAKER_RESET_TIMEOUT

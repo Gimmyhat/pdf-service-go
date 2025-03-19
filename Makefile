@@ -97,7 +97,7 @@ deploy-storage: check-env
 	@echo "Deploying storage for $(ENV) environment..."
 	kubectl config use-context $(CONTEXT)
 	kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE)
-	kubectl apply -f k8s/postgres-deployment.yaml -n $(NAMESPACE)
+	kubectl apply -f k8s/nas-pdf-service-postgres-deployment.yaml -n $(NAMESPACE)
 	@echo "Storage deployment completed"
 
 # Проверка хранилища
@@ -110,16 +110,16 @@ check-storage: check-env
 check-test: check-storage
 	@echo "Checking test cluster ($(TEST_CONTEXT)) status..."
 	kubectl config use-context $(TEST_CONTEXT)
-	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
-	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
 	kubectl get hpa -n $(NAMESPACE)
 
 # Проверка продакшн окружения
 check-prod: check-storage
 	@echo "Checking production cluster ($(PROD_CONTEXT)) status..."
 	kubectl config use-context $(PROD_CONTEXT)
-	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
-	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-gotenberg,nas-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get pods -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
+	kubectl get deploy -n $(NAMESPACE) -l "app in (nas-pdf-service,nas-pdf-service-gotenberg,nas-pdf-service-prometheus,nas-grafana,nas-jaeger)"
 	kubectl get hpa -n $(NAMESPACE)
 
 # ============================================================================
@@ -169,10 +169,23 @@ deploy: check-env
 		fi; \
 	fi; \
 	kubectl config use-context $(CONTEXT); \
+	echo "Applying all configurations..."; \
+	kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-templates-configmap.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n $(NAMESPACE); \
+	echo "Updating deployment image..."; \
 	kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); \
+	echo "Restarting deployments..."; \
 	kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); \
+	kubectl rollout restart deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); \
+	kubectl rollout restart deployment/nas-pdf-service-prometheus -n $(NAMESPACE); \
+	echo "Waiting for rollouts to complete..."; \
 	kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); \
+	kubectl rollout status deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); \
+	kubectl rollout status deployment/nas-pdf-service-prometheus -n $(NAMESPACE); \
 	echo "Deployment to $(ENV) completed successfully"; \
 	echo "Use 'make status ENV=$(ENV)' to check deployment status"; \
 	echo "Use 'make logs ENV=$(ENV)' to view logs"
@@ -265,7 +278,7 @@ clear-stats: check-env
 	@echo "Getting PostgreSQL pod name..."
 	@POSTGRES_POD=$$(kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service-postgres -o jsonpath='{.items[0].metadata.name}') && \
 	echo "Clearing statistics tables..." && \
-	kubectl exec -n $(NAMESPACE) $$POSTGRES_POD -- psql -U pdf_service -d pdf_service_stats -c "TRUNCATE TABLE request_logs, docx_logs, gotenberg_logs, pdf_logs;"
+	kubectl exec -n $(NAMESPACE) $$POSTGRES_POD -- psql -U pdf_service -d pdf_service -c "TRUNCATE TABLE request_logs, docx_logs, gotenberg_logs, pdf_logs;"
 	@echo "Statistics cleared successfully for $(ENV) environment"
 
 # ============================================================================

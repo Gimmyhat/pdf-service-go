@@ -4,7 +4,7 @@ metadata:
   name: nas-pdf-service-config
   namespace: print-serv
 data:
-  GOTENBERG_API_URL: http://nas-gotenberg:3000
+  GOTENBERG_API_URL: http://nas-pdf-service-gotenberg:3000
   GIN_MODE: release
   LOG_LEVEL: debug
   

@@ -41,9 +41,9 @@ func main() {
 	logger.Info("Statistics initialized with PostgreSQL")
 
 	// Создаем PDF сервис
-	gotenbergURL := os.Getenv("GOTENBERG_URL")
+	gotenbergURL := os.Getenv("GOTENBERG_API_URL")
 	if gotenbergURL == "" {
-		logger.Fatal("GOTENBERG_URL environment variable is not set")
+		logger.Fatal("GOTENBERG_API_URL environment variable is not set")
 	}
 
 	pdfService := pdf.NewService(gotenbergURL)

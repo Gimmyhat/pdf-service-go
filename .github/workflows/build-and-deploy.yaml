@@ -59,11 +59,11 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           # Применяем конфигурации
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/templates-configmap.yaml
-          kubectl apply -f k8s/gotenberg-deployment.yaml
+          kubectl apply -f k8s/nas-pdf-service-configmap.yaml
+          kubectl apply -f k8s/nas-pdf-service-templates-configmap.yaml
+          kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml
           kubectl apply -f k8s/pdf-service-deployment.yaml
-          kubectl apply -f k8s/hpa.yaml
+          kubectl apply -f k8s/nas-pdf-service-hpa.yaml
 
       - name: Verify deployment
         run: |

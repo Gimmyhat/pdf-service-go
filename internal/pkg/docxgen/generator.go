@@ -171,7 +171,7 @@ func NewGenerator(scriptPath string) *Generator {
 		cb:           cb,
 		cache:        cache.NewCache(config.CacheTTL),
 		tempManager:  tempManager,
-		gotenbergURL: getEnvWithDefault("GOTENBERG_URL", "http://nas-gotenberg:3000"),
+		gotenbergURL: getEnvWithDefault("GOTENBERG_API_URL", "http://nas-pdf-service-gotenberg:3000"),
 		retrier:      retrier,
 	}
 }

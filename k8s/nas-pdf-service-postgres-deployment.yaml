@@ -4,7 +4,7 @@ metadata:
   name: nas-pdf-service-postgres-config
   namespace: print-serv
 data:
-  POSTGRES_DB: pdf_service_stats
+  POSTGRES_DB: pdf_service
   POSTGRES_USER: pdf_service
   POSTGRES_PASSWORD: pdf_service_pass
 ---
@@ -36,7 +36,7 @@ spec:
         app: nas-pdf-service-postgres
     spec:
       containers:
-      - name: postgres
+      - name: nas-pdf-service-postgres
         image: postgres:15-alpine
         ports:
         - containerPort: 5432
@@ -44,7 +44,7 @@ spec:
         - configMapRef:
             name: nas-pdf-service-postgres-config
         volumeMounts:
-        - name: postgres-storage
+        - name: nas-pdf-service-postgres-storage
           mountPath: /var/lib/postgresql/data
         resources:
           requests:
@@ -64,7 +64,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
       volumes:
-      - name: postgres-storage
+      - name: nas-pdf-service-postgres-storage
         persistentVolumeClaim:
           claimName: nas-pdf-service-postgres-pvc
 ---

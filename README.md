@@ -80,6 +80,10 @@ make deploy ENV=test
 
 # Деплой в production
 make deploy ENV=prod
+
+# Очистка статистики
+make clear-stats ENV=test  # для тестового окружения
+make clear-stats ENV=prod  # для продакшена (требует подтверждения)
 ```
 
 ## Мониторинг
