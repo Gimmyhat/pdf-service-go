@@ -9,6 +9,7 @@ on:
 env:
   DOCKER_IMAGE: gimmyhat/pdf-service-go
   K8S_NAMESPACE: print-serv
+  NEW_VERSION: ${{ github.event.head_commit.timestamp }}
 
 jobs:
   build-and-push:
@@ -16,6 +17,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Run linter
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          golangci-lint run
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,9 +47,12 @@ jobs:
           push: true
           tags: |
             ${{ env.DOCKER_IMAGE }}:latest
-            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+            ${{ env.DOCKER_IMAGE }}:${{ env.NEW_VERSION }}
           cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+
+      - name: Save version
+        run: echo "${{ env.NEW_VERSION }}" > current_version.txt
 
   deploy:
     needs: build-and-push
@@ -50,11 +67,6 @@ jobs:
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
-
-      - name: Update deployment image
-        run: |
-          # Обновляем тег образа в deployment
-          sed -i "s|image: pdf-service-go:latest|image: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}|" k8s/pdf-service-deployment.yaml
 
       - name: Deploy to Kubernetes
         run: |
