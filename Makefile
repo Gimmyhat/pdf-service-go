@@ -134,7 +134,7 @@ deploy: check-env
 		kubectl create configmap nas-pdf-service-postgres-config \
 			--from-literal=POSTGRES_DB=pdf_service \
 			--from-literal=POSTGRES_USER=pdf_service \
-			--from-literal=POSTGRES_PASSWORD=pdf_service \
+			--from-literal=POSTGRES_PASSWORD=pdf_service_pass \
 			-n $(NAMESPACE); \
 	fi
 	@echo "Checking template ConfigMap..."
@@ -145,9 +145,10 @@ deploy: check-env
 			-n $(NAMESPACE); \
 	fi
 	@echo "Deploying PostgreSQL..."
-	@$(MAKE) deploy-storage ENV=$(ENV)
+	kubectl config use-context $(CONTEXT)
+	kubectl apply -f k8s/nas-pdf-service-postgres-deployment.yaml -n $(NAMESPACE)
 	@echo "Waiting for PostgreSQL to be ready..."
-	@kubectl wait --for=condition=ready pod -l app=nas-pdf-service-postgres -n $(NAMESPACE) --timeout=120s
+	@kubectl wait --for=condition=ready pod -l app=nas-pdf-service-postgres -n $(NAMESPACE) --timeout=180s || echo "Warning: PostgreSQL pod not ready in time. Continuing anyway..."
 	@echo "Deploying main service..."
 	@DEPLOY_VERSION="$(VERSION)"; \
 	if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "latest" ]; then \
@@ -172,6 +173,7 @@ deploy: check-env
 	echo "Applying all configurations..."; \
 	kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-templates-configmap.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); \
