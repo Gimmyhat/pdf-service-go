@@ -62,7 +62,7 @@ app:
 # Настройки Gotenberg
 gotenberg:
   enabled: true
-  url: http://nas-gotenberg:3000
+  url: http://nas-pdf-service-gotenberg:3000
 
 # Настройки PostgreSQL
 postgresql:
