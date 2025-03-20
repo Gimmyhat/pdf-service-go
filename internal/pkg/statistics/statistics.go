@@ -146,9 +146,6 @@ func (s *Statistics) GetStatisticsForPeriod(period string) (*StatisticsResponse,
 	now := time.Now().In(moscowLoc)
 	var since time.Time
 
-	// Отладочный вывод
-	fmt.Printf("GetStatisticsForPeriod: period=%s, current time (Moscow)=%v\n", period, now)
-
 	// Определяем начальное время периода
 	switch period {
 	case "15min":
@@ -169,11 +166,6 @@ func (s *Statistics) GetStatisticsForPeriod(period string) (*StatisticsResponse,
 	default:
 		return nil, fmt.Errorf("unknown period: %s", period)
 	}
-
-	// Отладочный вывод
-	fmt.Printf("Calculated since time (Moscow): %v\n", since)
-	fmt.Printf("Calculated since time (UTC): %v\n", since.UTC())
-	fmt.Printf("Is zero time: %v\n", since.IsZero())
 
 	// Получаем статистику из базы данных
 	stats, err := s.db.GetStatistics(since)
@@ -253,4 +245,9 @@ func formatDuration(duration time.Duration) string {
 	minutes := int(duration.Minutes()) % 60
 	seconds := int(duration.Seconds()) % 60
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+}
+
+// formatTime форматирует время в строку в формате ISO 8601
+func formatTime(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
 }

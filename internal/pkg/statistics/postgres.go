@@ -127,12 +127,10 @@ func (p *PostgresDB) LogPDF(timestamp time.Time, size int64) error {
 
 // GetStatistics возвращает статистику за указанный период
 func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
-	// Отладочный вывод для проверки времени
-	fmt.Printf("\n=== GetStatistics Debug ===\n")
-	fmt.Printf("Input time: %v\n", since)
-	fmt.Printf("Input time UTC: %v\n", since.UTC())
-	fmt.Printf("Input time Unix: %d\n", since.Unix())
-	fmt.Printf("Is zero time: %v\n", since.IsZero())
+	// Отладочный вывод только для нулевой даты или необычных случаев
+	if since.IsZero() {
+		fmt.Printf("GetStatistics: using no time filter (all data)\n")
+	}
 
 	stats := &Stats{
 		Requests: RequestStats{
@@ -151,11 +149,9 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	if since.IsZero() {
 		whereClause = ""
 		params = []interface{}{}
-		fmt.Printf("\nUsing no time filter (all data)\n")
 	} else {
 		whereClause = "WHERE timestamp >= $1"
 		params = []interface{}{since.UTC()}
-		fmt.Printf("\nUsing time filter: >= %v\n", since.UTC())
 	}
 
 	// Сначала проверим наличие данных в таблице
@@ -166,17 +162,10 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("\nChecking data availability with query: %s\n", checkQuery)
-	if len(params) > 0 {
-		fmt.Printf("Parameters: %v\n", params)
-	}
-
 	checkErr := p.db.QueryRow(checkQuery, params...).Scan(&totalCount)
 	if checkErr != nil {
-		fmt.Printf("Error checking data: %v\n", checkErr)
 		return nil, checkErr
 	}
-	fmt.Printf("Total records found: %d\n", totalCount)
 
 	// Проверим временной диапазон данных
 	var minTs, maxTs sql.NullTime
@@ -186,16 +175,9 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("\nChecking time range with query: %s\n", rangeQuery)
 	rangeErr := p.db.QueryRow(rangeQuery, params...).Scan(&minTs, &maxTs)
 	if rangeErr != nil {
-		fmt.Printf("Error checking time range: %v\n", rangeErr)
 		return nil, rangeErr
-	}
-	if minTs.Valid && maxTs.Valid {
-		fmt.Printf("Time range: from %v to %v\n", minTs.Time, maxTs.Time)
-	} else {
-		fmt.Printf("No time range data available\n")
 	}
 
 	// Запрашиваем статистику запросов
@@ -211,8 +193,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		FROM request_logs
 		%s
 	`, whereClause)
-
-	fmt.Printf("Executing request query: %s with params: %v\n", requestQuery, params)
 
 	var row *sql.Row
 	if len(params) > 0 {
@@ -248,8 +228,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("Executing DOCX query: %s with params: %v\n", docxQuery, params)
-
 	if len(params) > 0 {
 		row = p.db.QueryRow(docxQuery, params...)
 	} else {
@@ -282,8 +260,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("Executing Gotenberg query: %s with params: %v\n", gotenbergQuery, params)
-
 	if len(params) > 0 {
 		row = p.db.QueryRow(gotenbergQuery, params...)
 	} else {
@@ -314,8 +290,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		FROM pdf_logs
 		%s
 	`, whereClause)
-
-	fmt.Printf("Executing PDF query: %s with params: %v\n", pdfQuery, params)
 
 	if len(params) > 0 {
 		row = p.db.QueryRow(pdfQuery, params...)
@@ -399,32 +373,45 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 
 	// Запрашиваем распределение по дням недели
 	dayQuery := fmt.Sprintf(`
+		WITH day_counts AS (
+			SELECT 
+				EXTRACT(DOW FROM timestamp) as day_number,
+				COUNT(*) as count,
+				MAX(timestamp) as utc_time
+			FROM request_logs
+			%s
+			GROUP BY EXTRACT(DOW FROM timestamp)
+		)
 		SELECT 
-			EXTRACT(DOW FROM timestamp)::int as day_number,
-			COUNT(*) as count,
-			MAX(timestamp) as utc_time
-		FROM request_logs
-		%s
-		GROUP BY EXTRACT(DOW FROM timestamp)::int
+			day_number,
+			count,
+			utc_time
+		FROM day_counts
 		ORDER BY day_number
 	`, whereClause)
 
-	fmt.Printf("Executing day query: %s with params: %v\n", dayQuery, params)
-
-	rows, err := p.db.Query(dayQuery, params...)
-	if err != nil {
-		return nil, fmt.Errorf("error querying day stats: %w", err)
+	var dayRows *sql.Rows
+	var dayErr error
+	if len(params) > 0 {
+		dayRows, dayErr = p.db.Query(dayQuery, params...)
+	} else {
+		dayRows, dayErr = p.db.Query(dayQuery)
 	}
-	defer rows.Close()
+	if dayErr != nil {
+		return nil, fmt.Errorf("error querying days: %w", dayErr)
+	}
+	defer dayRows.Close()
 
-	for rows.Next() {
-		var dayNumber int
+	for dayRows.Next() {
+		var dayNumber float64
 		var count uint64
-		var utcTime sql.NullTime
-		if scanErr := rows.Scan(&dayNumber, &count, &utcTime); scanErr != nil {
-			return nil, fmt.Errorf("error scanning day stats: %w", scanErr)
+		var utcTime time.Time
+		if err := dayRows.Scan(&dayNumber, &count, &utcTime); err != nil {
+			return nil, fmt.Errorf("error scanning day row: %w", err)
 		}
-		stats.Requests.RequestsByDay[time.Weekday(dayNumber)] = count
+
+		day := time.Weekday(int(dayNumber))
+		stats.Requests.RequestsByDay[day] = count
 	}
 
 	// Запрашиваем распределение по часам
@@ -442,36 +429,27 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		ORDER BY hour
 	`, whereClause)
 
-	fmt.Printf("Executing hour query: %s with params: %v\n", hourQuery, params)
-
+	var hourRows *sql.Rows
+	var hourErr error
 	if len(params) > 0 {
-		rows, err = p.db.Query(hourQuery, params...)
+		hourRows, hourErr = p.db.Query(hourQuery, params...)
 	} else {
-		rows, err = p.db.Query(hourQuery)
+		hourRows, hourErr = p.db.Query(hourQuery)
 	}
-	if err != nil {
-		return nil, err
+	if hourErr != nil {
+		return nil, hourErr
 	}
-	defer rows.Close()
+	defer hourRows.Close()
 
-	for rows.Next() {
+	for hourRows.Next() {
 		var hourFloat float64
 		var count uint64
-		if err := rows.Scan(&hourFloat, &count); err != nil {
+		if err := hourRows.Scan(&hourFloat, &count); err != nil {
 			return nil, err
 		}
 		hour := int(hourFloat)
 		stats.Requests.RequestsByHour[hour] = count
 	}
-
-	// Добавляем отладочный вывод перед возвратом результатов
-	fmt.Printf("\n=== Statistics Summary ===\n")
-	fmt.Printf("Total Requests: %d\n", stats.Requests.TotalRequests)
-	fmt.Printf("Success Requests: %d\n", stats.Requests.SuccessRequests)
-	fmt.Printf("Failed Requests: %d\n", stats.Requests.FailedRequests)
-	fmt.Printf("Requests by Day: %v\n", stats.Requests.RequestsByDay)
-	fmt.Printf("Requests by Hour: %v\n", stats.Requests.RequestsByHour)
-	fmt.Printf("=== End of GetStatistics ===\n\n")
 
 	return stats, nil
 }
