@@ -1,6 +1,7 @@
 package statistics
 
 import (
+	"sync"
 	"time"
 )
 
@@ -57,6 +58,7 @@ type Stats struct {
 
 // Statistics представляет собой потокобезопасное хранилище статистики
 type Statistics struct {
+	mu        sync.RWMutex
 	Requests  RequestStats
 	Docx      DocxStats
 	Gotenberg GotenbergStats

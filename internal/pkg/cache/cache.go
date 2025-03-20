@@ -40,26 +40,6 @@ type Cache struct {
 	count  prometheus.Gauge
 }
 
-// Lock блокирует кэш для записи
-func (c *Cache) Lock() {
-	c.RWMutex.Lock()
-}
-
-// Unlock разблокирует кэш для записи
-func (c *Cache) Unlock() {
-	c.RWMutex.Unlock()
-}
-
-// RLock блокирует кэш для чтения
-func (c *Cache) RLock() {
-	c.RWMutex.RLock()
-}
-
-// RUnlock разблокирует кэш для чтения
-func (c *Cache) RUnlock() {
-	c.RWMutex.RUnlock()
-}
-
 // NewCache создает новый экземпляр кэша
 func NewCache(ttl time.Duration) *Cache {
 	return NewCacheWithMetrics(ttl, cacheHits, cacheMisses, cacheSize, cacheItemsCount)
@@ -128,6 +108,23 @@ func (c *Cache) Delete(ctx context.Context, key string) {
 	}
 }
 
+// startCleanupTimer запускает периодическую очистку устаревших элементов
+func (c *Cache) startCleanupTimer() {
+	ticker := time.NewTicker(c.ttl)
+	for range ticker.C {
+		now := time.Now().UnixNano()
+		c.RLock()
+		for key, item := range c.items {
+			if now > item.expiration.UnixNano() {
+				c.size.WithLabelValues(key).Set(0)
+				c.count.Dec()
+				delete(c.items, key)
+			}
+		}
+		c.RUnlock()
+	}
+}
+
 // SetFromReader сохраняет данные в кэш из io.Reader
 func (c *Cache) SetFromReader(ctx context.Context, key string, reader io.Reader) error {
 	ctx, span := tracing.StartSpan(ctx, "Cache.SetFromReader")
@@ -162,4 +159,15 @@ func (c *Cache) Clear(ctx context.Context) {
 	}
 	c.items = make(map[string]*cacheItem)
 	c.count.Set(0)
+}
+
+// hasExpiredItems проверяет, есть ли истекшие элементы в кэше
+func (c *Cache) hasExpiredItems() bool {
+	now := time.Now()
+	for _, item := range c.items {
+		if now.After(item.expiration) {
+			return true
+		}
+	}
+	return false
 }

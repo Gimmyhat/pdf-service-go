@@ -37,9 +37,7 @@ func StatisticsMiddleware() gin.HandlerFunc {
 			)
 
 			// Обновляем статистику
-			if err := stats.TrackRequest(path, method, duration, success); err != nil {
-				logger.Log.Error("Failed to track request", zap.Error(err))
-			}
+			stats.TrackRequest(path, method, duration, success)
 		} else {
 			c.Next()
 		}

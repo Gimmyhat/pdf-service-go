@@ -1,25 +1,14 @@
 package main
 
 import (
-	"context"
-	"fmt"
+	"net/http"
 	_ "net/http/pprof" // Импортируем pprof
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"runtime"
-
-	"pdf-service-go/internal/api/handlers"
-	"pdf-service-go/internal/api/middleware"
-	"pdf-service-go/internal/api/server"
+	"pdf-service-go/internal/api"
 	"pdf-service-go/internal/domain/pdf"
-	"pdf-service-go/internal/pkg/cache"
-	"pdf-service-go/internal/pkg/config"
-	"pdf-service-go/internal/pkg/gotenberg"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
+	"runtime"
 )
 
 func main() {
@@ -27,81 +16,68 @@ func main() {
 	runtime.SetMutexProfileFraction(1)
 	runtime.SetBlockProfileRate(1)
 
-	// Инициализируем логгер в самом начале
-	if err := logger.InitLogger(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
-		os.Exit(1)
+	// Инициализируем логгер
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
 	}
-	defer func() {
-		if err := logger.Log.Sync(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
-		}
-	}()
-
-	// Теперь можно использовать логгер
-	logger.Info("Starting PDF service...")
-
-	// Загрузка конфигурации
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		logger.Fatal("Failed to load config", err)
+	if err := logger.Init(logLevel); err != nil {
+		panic("failed to initialize logger: " + err.Error())
 	}
+	defer logger.Log.Sync()
 
-	// Инициализация зависимостей
-	ctx := context.Background()
-
-	// Инициализация кэша
-	cache, err := cache.NewCache(cfg.Cache)
-	if err != nil {
-		logger.Fatal("Failed to initialize cache", err)
+	// Инициализируем статистику
+	statsConfig := statistics.Config{
+		Host:     os.Getenv("POSTGRES_HOST"),
+		Port:     os.Getenv("POSTGRES_PORT"),
+		DBName:   os.Getenv("POSTGRES_DB"),
+		User:     os.Getenv("POSTGRES_USER"),
+		Password: os.Getenv("POSTGRES_PASSWORD"),
 	}
 
-	// Инициализация Gotenberg клиента
-	gotenbergClient, err := gotenberg.NewClientWithPool(cfg.Gotenberg)
-	if err != nil {
-		logger.Fatal("Failed to initialize Gotenberg client", err)
+	if err := statistics.Initialize(statsConfig); err != nil {
+		logger.Fatal("Failed to initialize statistics", logger.Field("error", err))
+	}
+	logger.Info("Statistics initialized with PostgreSQL")
+
+	// Создаем PDF сервис
+	gotenbergURL := os.Getenv("GOTENBERG_API_URL")
+	if gotenbergURL == "" {
+		logger.Fatal("GOTENBERG_API_URL environment variable is not set")
 	}
 
-	// Инициализация статистики
-	stats, err := statistics.NewPostgresStatistics(cfg.Statistics)
-	if err != nil {
-		logger.Fatal("Failed to initialize statistics", err)
-	}
+	pdfService := pdf.NewService(gotenbergURL)
+	logger.Info("PDF service created", logger.Field("gotenberg_url", gotenbergURL))
 
-	// Инициализация сервиса PDF
-	pdfService := pdf.NewServiceImpl(cache, gotenbergClient, stats)
+	// Создаем обработчики
+	handlers := api.NewHandlers(pdfService)
+	logger.Info("Handlers initialized")
 
-	// Инициализация обработчиков
-	handlers := handlers.NewHandlers(pdfService, stats)
+	// Создаем и настраиваем сервер
+	server := api.NewServer(handlers, pdfService)
+	server.SetupRoutes()
+	logger.Info("Server configured and routes set up")
 
-	// Инициализация middleware
-	middleware := middleware.NewMiddleware(stats)
-
-	// Инициализация сервера
-	srv := server.NewServer(cfg.Server, handlers, middleware)
-
-	// Запуск сервера в горутине
+	// Запускаем pprof сервер на отдельном порту
 	go func() {
-		if err := srv.Start(); err != nil {
-			logger.Error("Server error", err)
+		pprofPort := os.Getenv("PPROF_PORT")
+		if pprofPort == "" {
+			pprofPort = "6060"
+		}
+		logger.Info("Starting pprof server", logger.Field("port", pprofPort))
+		if err := http.ListenAndServe(":"+pprofPort, nil); err != nil {
+			logger.Error("Failed to start pprof server", logger.Field("error", err))
 		}
 	}()
 
-	// Ожидание сигнала для graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	logger.Info("Shutting down server...")
-
-	// Создаем контекст с таймаутом для graceful shutdown
-	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	// Останавливаем сервер
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("Server forced to shutdown", err)
+	// Получаем порт для основного сервера из переменной окружения
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		serverPort = "8080"
 	}
 
-	logger.Info("Server exiting")
+	// Запускаем основной сервер
+	if err := server.Start(":" + serverPort); err != nil {
+		logger.Fatal("Failed to start server", logger.Field("error", err))
+	}
 }

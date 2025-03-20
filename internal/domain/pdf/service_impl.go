@@ -21,7 +21,6 @@ import (
 type ServiceImpl struct {
 	gotenbergClient *gotenberg.ClientWithCircuitBreaker
 	docxGenerator   *docxgen.Generator
-	stats           *statistics.Statistics
 }
 
 type StatsHandler struct {
@@ -30,9 +29,7 @@ type StatsHandler struct {
 
 func (h *StatsHandler) TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool) {
 	if !isHealthCheck {
-		if err := h.stats.TrackGotenberg(duration, hasError); err != nil {
-			logger.Log.Error("Failed to track Gotenberg metrics", zap.Error(err))
-		}
+		h.stats.TrackGotenberg(duration, hasError)
 	}
 }
 
@@ -46,7 +43,6 @@ func NewService(gotenbergURL string) Service {
 	return &ServiceImpl{
 		gotenbergClient: client,
 		docxGenerator:   docxgen.NewGenerator("scripts/generate_docx.py"),
-		stats:           statistics.GetInstance(),
 	}
 }
 
@@ -131,10 +127,10 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	// Генерируем DOCX
 	log.Info("Starting DOCX generation")
 	docxStart := time.Now()
-	if genErr := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); genErr != nil {
-		log.Error("Failed to generate DOCX", zap.Error(genErr))
+	if err := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
+		log.Error("Failed to generate DOCX", zap.Error(err))
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to generate DOCX: %w", genErr)
+		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
 	}
 	docxGenerationTime = time.Since(docxStart)
 
@@ -182,17 +178,4 @@ func (s *ServiceImpl) GetDocxGeneratorState() circuitbreaker.State {
 // IsDocxGeneratorHealthy возвращает true, если Circuit Breaker для генератора DOCX в здоровом состоянии
 func (s *ServiceImpl) IsDocxGeneratorHealthy() bool {
 	return s.docxGenerator.IsHealthy()
-}
-
-func (h *ServiceImpl) ConvertDocxToPDF(ctx context.Context, docxPath string) ([]byte, error) {
-	start := time.Now()
-	pdfData, err := h.gotenbergClient.ConvertDocxToPDF(docxPath)
-	duration := time.Since(start)
-	hasError := err != nil
-
-	if trackErr := h.stats.TrackGotenberg(duration, hasError); trackErr != nil {
-		logger.Log.Error("Failed to track Gotenberg metrics", zap.Error(trackErr))
-	}
-
-	return pdfData, err
 }
