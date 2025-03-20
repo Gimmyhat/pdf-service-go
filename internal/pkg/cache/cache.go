@@ -140,10 +140,21 @@ func (c *Cache) SetFromReader(ctx context.Context, key string, reader io.Reader)
 	}
 
 	// Сохраняем в кэш
+	c.Lock()
+	defer c.Unlock()
+
+	// If key exists, update size metric
+	if oldItem, exists := c.items[key]; exists {
+		c.size.WithLabelValues(key).Sub(float64(len(oldItem.data)))
+	} else {
+		c.count.Inc()
+	}
+
 	c.items[key] = &cacheItem{
 		data:       data,
 		expiration: time.Now().Add(c.ttl),
 	}
+	c.size.WithLabelValues(key).Add(float64(len(data)))
 
 	span.AddEvent("Cache updated")
 	return nil
@@ -163,6 +174,9 @@ func (c *Cache) Clear(ctx context.Context) {
 
 // hasExpiredItems проверяет, есть ли истекшие элементы в кэше
 func (c *Cache) hasExpiredItems() bool {
+	c.RLock()
+	defer c.RUnlock()
+
 	now := time.Now()
 	for _, item := range c.items {
 		if now.After(item.expiration) {
