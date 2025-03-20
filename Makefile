@@ -82,14 +82,8 @@ get-version:
 
 # Проверка переменных окружения
 check-env:
-	@if [ -z "$(ENV)" ]; then \
-		echo "Error: ENV is not set. Use ENV=test or ENV=prod"; \
-		exit 1; \
-	fi
-	@if [ "$(ENV)" != "test" ] && [ "$(ENV)" != "prod" ]; then \
-		echo "Error: ENV must be either 'test' or 'prod'"; \
-		exit 1; \
-	fi
+	@powershell -command "if (-not '$(ENV)') { Write-Error 'Error: ENV is not set. Use ENV=test or ENV=prod'; exit 1 }"
+	@powershell -command "if ('$(ENV)' -ne 'test' -and '$(ENV)' -ne 'prod') { Write-Error 'Error: ENV must be either ''test'' or ''prod'''; exit 1 }"
 	@echo "Environment check passed: ENV=$(ENV)"
 
 # Деплой хранилища
@@ -172,7 +166,7 @@ deploy: check-env
 	kubectl config use-context $(CONTEXT); \
 	echo "Applying all configurations..."; \
 	kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-templates-configmap.yaml -n $(NAMESPACE); \
+	kubectl apply -f k8s/nas-pdf-service-templates-configmap-filled.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); \
 	kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); \
