@@ -31,7 +31,7 @@ func (i *cacheItem) isExpired() bool {
 
 // Cache представляет кэш с поддержкой TTL
 type Cache struct {
-	sync.RWMutex
+	mutex  sync.RWMutex
 	items  map[string]*cacheItem
 	ttl    time.Duration
 	hits   prometheus.Gauge
@@ -58,8 +58,8 @@ func NewCacheWithMetrics(ttl time.Duration, hits prometheus.Gauge, misses promet
 
 // Set добавляет значение в кэш
 func (c *Cache) Set(key string, value []byte) {
-	c.Lock()
-	defer c.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	// If key exists, update size metric
 	if oldItem, exists := c.items[key]; exists {
@@ -77,9 +77,9 @@ func (c *Cache) Set(key string, value []byte) {
 
 // Get получает значение из кэша
 func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
-	c.RLock()
+	c.mutex.RLock()
 	item, exists := c.items[key]
-	c.RUnlock()
+	c.mutex.RUnlock()
 
 	if !exists {
 		c.misses.Inc()
@@ -98,8 +98,8 @@ func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
 
 // Delete удаляет значение из кэша
 func (c *Cache) Delete(ctx context.Context, key string) {
-	c.Lock()
-	defer c.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	if item, exists := c.items[key]; exists {
 		c.size.WithLabelValues(key).Sub(float64(len(item.data)))
@@ -113,7 +113,7 @@ func (c *Cache) startCleanupTimer() {
 	ticker := time.NewTicker(c.ttl)
 	for range ticker.C {
 		now := time.Now().UnixNano()
-		c.RLock()
+		c.mutex.RLock()
 		for key, item := range c.items {
 			if now > item.expiration.UnixNano() {
 				c.size.WithLabelValues(key).Set(0)
@@ -121,7 +121,7 @@ func (c *Cache) startCleanupTimer() {
 				delete(c.items, key)
 			}
 		}
-		c.RUnlock()
+		c.mutex.RUnlock()
 	}
 }
 
@@ -140,8 +140,8 @@ func (c *Cache) SetFromReader(ctx context.Context, key string, reader io.Reader)
 	}
 
 	// Сохраняем в кэш
-	c.Lock()
-	defer c.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	// If key exists, update size metric
 	if oldItem, exists := c.items[key]; exists {
@@ -162,8 +162,8 @@ func (c *Cache) SetFromReader(ctx context.Context, key string, reader io.Reader)
 
 // Clear очищает весь кэш
 func (c *Cache) Clear(ctx context.Context) {
-	c.Lock()
-	defer c.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
 	for key := range c.items {
 		c.size.WithLabelValues(key).Set(0)
@@ -174,8 +174,8 @@ func (c *Cache) Clear(ctx context.Context) {
 
 // hasExpiredItems проверяет, есть ли истекшие элементы в кэше
 func (c *Cache) hasExpiredItems() bool {
-	c.RLock()
-	defer c.RUnlock()
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 
 	now := time.Now()
 	for _, item := range c.items {
