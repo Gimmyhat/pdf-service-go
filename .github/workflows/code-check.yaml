@@ -23,9 +23,9 @@ jobs:
 
       - name: Run golangci-lint
         run: |
-          # Запускаем только на файлах проекта, исключая ошибки в стандартной библиотеке и зависимостях
+          # Запускаем только на файлах проекта, исключая зависимости
           golangci-lint run --timeout=5m --skip-dirs=vendor --skip-dirs-use-default \
-            --path-prefix=${GITHUB_WORKSPACE} --path-prefix-exclude=/go
+            --path-prefix=${GITHUB_WORKSPACE}
 
   test:
     runs-on: ubuntu-latest
