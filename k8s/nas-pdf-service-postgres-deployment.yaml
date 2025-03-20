@@ -9,6 +9,47 @@ data:
   POSTGRES_PASSWORD: pdf_service_pass
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-pdf-service-postgres-init
+  namespace: print-serv
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS request_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      path TEXT NOT NULL,
+      method TEXT NOT NULL,
+      duration_ns BIGINT NOT NULL,
+      success BOOLEAN NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS docx_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      duration_ns BIGINT NOT NULL,
+      has_error BOOLEAN NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS gotenberg_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      duration_ns BIGINT NOT NULL,
+      has_error BOOLEAN NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pdf_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      size_bytes BIGINT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_docx_logs_timestamp ON docx_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_gotenberg_logs_timestamp ON gotenberg_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_pdf_logs_timestamp ON pdf_logs(timestamp);
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: nas-pdf-service-postgres-pvc
@@ -18,7 +59,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: 5Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,30 +84,46 @@ spec:
         envFrom:
         - configMapRef:
             name: nas-pdf-service-postgres-config
+        env:
+        - name: POSTGRES_MAX_CONNECTIONS
+          value: "500"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         volumeMounts:
         - name: nas-pdf-service-postgres-storage
           mountPath: /var/lib/postgresql/data
+        - name: nas-pdf-service-postgres-init
+          mountPath: /docker-entrypoint-initdb.d
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
         readinessProbe:
           exec:
             command: ["pg_isready", "-U", "pdf_service"]
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
         livenessProbe:
           exec:
             command: ["pg_isready", "-U", "pdf_service"]
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
       volumes:
       - name: nas-pdf-service-postgres-storage
         persistentVolumeClaim:
           claimName: nas-pdf-service-postgres-pvc
+      - name: nas-pdf-service-postgres-init
+        configMap:
+          name: nas-pdf-service-postgres-init
 ---
 apiVersion: v1
 kind: Service
