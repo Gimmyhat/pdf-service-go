@@ -26,15 +26,9 @@ func NewErrorTracker() *ErrorTracker {
 
 // TrackError записывает ошибку с полным контекстом
 func (et *ErrorTracker) TrackError(ctx context.Context, err error, opts ...ErrorOption) {
-	if err == nil {
-		fmt.Printf("DEBUG: TrackError called with nil error\n")
+	if err == nil || et.stats == nil {
 		return
 	}
-	if et.stats == nil {
-		fmt.Printf("DEBUG: TrackError called with nil stats - statistics not initialized\n")
-		return
-	}
-	fmt.Printf("DEBUG: TrackError processing error: %s\n", err.Error())
 
 	// Создаем базовую структуру ошибки
 	errorDetails := &statistics.ErrorDetails{
