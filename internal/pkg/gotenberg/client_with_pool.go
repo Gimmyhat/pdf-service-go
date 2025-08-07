@@ -41,7 +41,7 @@ func NewClientWithPool(baseURL string) *ClientWithPool {
 
 		client := &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   getEnvDurationWithDefault("GOTENBERG_CLIENT_TIMEOUT", 60 * time.Second),
 		}
 
 		return client, func() error {

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:latest
+        image: dh-mirror.gitverse.ru/grafana/grafana:latest
         ports:
         - containerPort: 3000
         env:

@@ -251,10 +251,17 @@ func (g *Generator) Generate(ctx context.Context, templatePath, dataPath, output
 			cmd.Env = append(os.Environ(), "DOCX_PARALLEL_PROCESSING=true")
 
 			output, err := cmd.CombinedOutput()
+			// Логируем вывод Python-скрипта В ЛЮБОМ СЛУЧАЕ для отладки
+			if len(output) > 0 {
+				logger.Info("Python script output",
+					zap.String("script", g.config.ScriptPath),
+					zap.String("output", string(output)),
+				)
+			}
+
 			if err != nil {
 				logger.Error("Failed to generate DOCX",
 					zap.Error(err),
-					zap.String("output", string(output)),
 					zap.String("template", tempPath),
 					zap.String("data", dataPath),
 					zap.String("output_docx", outputDocx),

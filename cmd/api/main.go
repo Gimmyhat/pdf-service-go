@@ -43,7 +43,11 @@ func main() {
 	// Создаем PDF сервис
 	gotenbergURL := os.Getenv("GOTENBERG_API_URL")
 	if gotenbergURL == "" {
-		logger.Fatal("GOTENBERG_API_URL environment variable is not set")
+		// Пробуем альтернативное имя переменной для обратной совместимости
+		gotenbergURL = os.Getenv("GOTENBERG_URL")
+		if gotenbergURL == "" {
+			logger.Fatal("GOTENBERG_API_URL or GOTENBERG_URL environment variable is not set")
+		}
 	}
 
 	pdfService := pdf.NewService(gotenbergURL)

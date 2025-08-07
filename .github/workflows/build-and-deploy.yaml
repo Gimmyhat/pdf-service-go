@@ -7,7 +7,7 @@ on:
     branches: [ "main", "dev" ]
 
 env:
-  DOCKER_IMAGE: gimmyhat/pdf-service-go
+  DOCKER_IMAGE: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go
   K8S_NAMESPACE: print-serv
 
 jobs:

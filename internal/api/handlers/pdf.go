@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/circuitbreaker"
+	"pdf-service-go/internal/pkg/errortracker"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
 	"strconv"
@@ -84,13 +85,23 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 	docxDuration := time.Since(docxStartTime)
 
 	if err != nil {
+		status := h.determineErrorStatus(err)
+
+		// Отслеживаем ошибку с контекстом
+		errortracker.TrackError(c.Request.Context(), err,
+			errortracker.WithComponent("pdf"),
+			errortracker.WithHTTPStatus(status),
+			errortracker.WithDuration(docxDuration),
+			errortracker.WithRequestDetails("pages", req.Pages),
+		)
+
 		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
 			gotenbergErr = err
 		} else {
 			docxErr = err
 		}
 		logger.Error("Failed to generate PDF", zap.Error(err))
-		c.JSON(h.determineErrorStatus(err), gin.H{"error": err.Error()})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 

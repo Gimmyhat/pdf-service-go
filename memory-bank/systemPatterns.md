@@ -85,8 +85,16 @@ error_logs (
 - **HTTP REST**: Синхронная коммуникация между сервисами
 - **Health Endpoints**: Стандартизированные проверки состояния
 - **Graceful Shutdown**: Корректное завершение при обновлениях
+- **Request Capture Middleware**: Автоматический перехват и логирование всех HTTP запросов
 
 ### External Dependencies
 - **Gotenberg API**: Изоляция через interface и mock для тестов
-- **PostgreSQL**: Repository pattern с абстракцией БД
+- **PostgreSQL**: Repository pattern с абстракцией БД, оптимизированным для NFS storage
 - **File System**: Управление временными файлами с cleanup
+
+### Web Interface Patterns
+- **Unified Dashboard**: Единый интерфейс `/dashboard` с табами для разных типов данных
+- **Modal Windows**: Детальный просмотр данных без перехода на новые страницы
+- **Real-time Data Fetching**: Асинхронная загрузка данных через REST API
+- **Hybrid Data Integration**: Комбинирование данных из разных источников (старые статистические таблицы + новая система детального логирования)
+- **Progressive Enhancement**: Базовая функциональность + дополнительные возможности (копирование, форматирование JSON)

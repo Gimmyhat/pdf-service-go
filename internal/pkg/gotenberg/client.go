@@ -36,7 +36,7 @@ func NewClient(baseURL string) *Client {
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
+		Timeout:   getEnvDurationWithDefault("GOTENBERG_CLIENT_TIMEOUT", 60 * time.Second),
 	}
 
 	return &Client{

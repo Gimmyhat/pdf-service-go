@@ -24,7 +24,7 @@ if (-not $Version) {
 Write-Host "Building Docker image with tag: $Version"
 
 # Собираем образ
-docker build -t "gimmyhat/pdf-service-go:$Version" .
+docker build -t "dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:$Version" .
 if ($LASTEXITCODE -ne 0) {
     throw "Ошибка при сборке Docker образа"
 }
@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Pushing Docker image to Docker Hub"
 
 # Отправляем образ
-docker push "gimmyhat/pdf-service-go:$Version"
+docker push "dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:$Version"
 if ($LASTEXITCODE -ne 0) {
     throw "Ошибка при отправке Docker образа"
 }

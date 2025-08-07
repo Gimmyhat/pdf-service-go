@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -91,7 +92,68 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 		return nil, ErrTemplateNotFound
 	}
 
-	// Создаем временные файлы через TempManager
+	// Генерация документа в два этапа для корректного подсчета страниц
+	log.Info("Starting two-phase document generation for accurate page count")
+
+	// Этап 1: Создание черновика документа с подсчетом страниц
+	draftDataFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("draft-data-%d-%x-*.json", time.Now().UnixNano(), time.Now().Nanosecond()))
+	if err != nil {
+		log.Error("Failed to create temp draft JSON file", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		return nil, fmt.Errorf("failed to create temp draft JSON file: %w", err)
+	}
+	defer draftDataFile.Close()
+	defer os.Remove(draftDataFile.Name())
+
+	draftDocxFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("draft-docx-%d-%x-*.docx", time.Now().UnixNano(), time.Now().Nanosecond()))
+	if err != nil {
+		log.Error("Failed to create temp draft DOCX file", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		return nil, fmt.Errorf("failed to create temp draft DOCX file: %w", err)
+	}
+	defer draftDocxFile.Close()
+	defer os.Remove(draftDocxFile.Name())
+
+	// Устанавливаем временное значение для страниц и сохраняем во временный JSON
+	reqCopy := *req
+	reqCopy.Pages = 0      // Указываем, что это черновик для подсчета
+	reqCopy.IsDraft = true // Флаг, указывающий что это черновик
+
+	draftData, err := json.Marshal(reqCopy)
+	if err != nil {
+		log.Error("Failed to marshal draft request data", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		return nil, fmt.Errorf("failed to marshal draft request data: %w", err)
+	}
+
+	if _, err = draftDataFile.Write(draftData); err != nil {
+		log.Error("Failed to write draft data file", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		return nil, fmt.Errorf("failed to write draft data file: %w", err)
+	}
+
+	// Генерируем черновик DOCX
+	log.Info("Generating draft DOCX for page counting")
+	if err := s.docxGenerator.Generate(ctx, templatePath, draftDataFile.Name(), draftDocxFile.Name()); err != nil {
+		log.Error("Failed to generate draft DOCX", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		return nil, fmt.Errorf("failed to generate draft DOCX: %w", err)
+	}
+
+	// Конвертируем черновик в PDF и подсчитываем страницы
+	log.Info("Converting draft DOCX to PDF for page counting")
+	draftPdfContent, err := s.gotenbergClient.ConvertDocxToPDF(draftDocxFile.Name())
+	if err != nil {
+		log.Error("Failed to convert draft DOCX to PDF", zap.Error(err))
+		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		return nil, fmt.Errorf("failed to convert draft DOCX to PDF: %w", err)
+	}
+
+	// Подсчитываем количество страниц в PDF
+	pageCount := countPages(draftPdfContent)
+	log.Info("Counted pages in draft PDF", zap.Int("pageCount", pageCount))
+
+	// Этап 2: Создание финального документа с правильным количеством страниц
 	dataFile, err := s.docxGenerator.GetTempManager().CreateTemp(ctx, fmt.Sprintf("data-%d-%x-*.json", time.Now().UnixNano(), time.Now().Nanosecond()))
 	if err != nil {
 		log.Error("Failed to create temp JSON file", zap.Error(err))
@@ -110,6 +172,10 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	defer docxFile.Close()
 	defer os.Remove(docxFile.Name())
 
+	// Устанавливаем правильное значение для страниц в оригинальном запросе
+	req.Pages = pageCount
+	req.IsDraft = false
+
 	// Сохраняем данные во временный JSON файл
 	data, err := json.Marshal(req)
 	if err != nil {
@@ -124,8 +190,8 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 		return nil, fmt.Errorf("failed to write data file: %w", err)
 	}
 
-	// Генерируем DOCX
-	log.Info("Starting DOCX generation")
+	// Генерируем финальный DOCX
+	log.Info("Starting final DOCX generation", zap.Int("pages", req.Pages))
 	docxStart := time.Now()
 	if err := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
 		log.Error("Failed to generate DOCX", zap.Error(err))
@@ -158,6 +224,22 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	metrics.PDFFileSizeBytes.WithLabelValues("generate-pdf").Observe(float64(len(pdfContent)))
 
 	return pdfContent, nil
+}
+
+// Функция для подсчета страниц в PDF
+func countPages(pdfContent []byte) int {
+	// Простой подсчет количества вхождений "/Page" в PDF
+	pageCount := bytes.Count(pdfContent, []byte("/Page"))
+
+	// Логика корректировки подсчета:
+	// 1. Если страниц меньше 4, указываем минимум 1 лист
+	// 2. Иначе вычитаем 3, предполагая что это служебные страницы
+	if pageCount < 4 {
+		return 1
+	}
+
+	// Вычитаем 3 страницы из общего количества
+	return pageCount - 3
 }
 
 // GetCircuitBreakerState возвращает текущее состояние Circuit Breaker для Gotenberg

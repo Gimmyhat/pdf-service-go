@@ -1,6 +1,6 @@
 services:
   pdf-service:
-    image: gimmyhat/pdf-service-go:${VERSION:-latest}
+    image: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:${VERSION:-latest}
     ports:
       - "8080:8080"
     volumes:
@@ -9,6 +9,7 @@ services:
     environment:
       - GIN_MODE=release
       - GOTENBERG_URL=http://gotenberg:3000
+      - GOTENBERG_CLIENT_TIMEOUT=60s
       - LOG_LEVEL=debug
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -53,15 +54,23 @@ services:
       - GOTENBERG_MAX_WORKERS=4
       - GOTENBERG_CHROMIUM_MAX_QUEUE_SIZE=10
       - GOTENBERG_LIBREOFFICE_MAX_QUEUE_SIZE=10
-      - GOTENBERG_DEFAULT_WAIT_TIMEOUT=30
+      - GOTENBERG_DEFAULT_WAIT_TIMEOUT=60
       - GOTENBERG_DEFAULT_WAIT_DELAY=1
     command:
       - "gotenberg"
       - "--api-port=3000"
       - "--api-timeout=60s"
+      - "--libreoffice-start-timeout=60s"
+      - "--api-start-timeout=60s"
+      - "--chromium-start-timeout=60s"
+      - "--gotenberg-graceful-shutdown-duration=60s"
+      - "--webhook-client-timeout=60s"
       - "--chromium-disable-javascript=true"
       - "--chromium-allow-list=file:///tmp/.*"
-      - "--libreoffice-restart-after=0"
+      - "--libreoffice-restart-after=10"
+      - "--api-trace-header=X-Request-ID"
+      - "--log-level=info"
+      - "--log-format=json"
 
   postgres:
     image: postgres:15

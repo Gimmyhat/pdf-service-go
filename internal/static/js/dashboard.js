@@ -624,22 +624,39 @@ async function refreshErrorData() {
     const severity = document.getElementById('errorSeverityFilter')?.value || '';
     
     try {
-        // Загружаем статистику ошибок
+        // Загружаем статистику ошибок (старая система)
         const statsResponse = await fetch(`/api/v1/errors/stats?period=${period}`);
         const stats = await statsResponse.json();
         
-        // Загружаем детальную информацию об ошибках
-        let url = `/api/v1/errors?period=${period}&limit=50`;
-        if (type) url += `&type=${type}`;
-        if (component) url += `&component=${component}`;
-        if (severity) url += `&severity=${severity}`;
+        // Загружаем детальную информацию об ошибках (старая система)
+        let errorsUrl = `/api/v1/errors?period=${period}&limit=25`;
+        if (type) errorsUrl += `&type=${type}`;
+        if (component) errorsUrl += `&component=${component}`;
+        if (severity) errorsUrl += `&severity=${severity}`;
         
-        const errorsResponse = await fetch(url);
+        // Загружаем детальные запросы с ошибками (новая система)
+        let requestErrorsUrl = `/api/v1/requests/error?period=${period}&limit=25`;
+        if (component) requestErrorsUrl += `&category=${component}_error`;
+        
+        const [errorsResponse, requestErrorsResponse] = await Promise.all([
+            fetch(errorsUrl),
+            fetch(requestErrorsUrl)
+        ]);
+        
         const errors = await errorsResponse.json();
+        const requestErrors = await requestErrorsResponse.json();
         
-        errorData = { stats, errors };
-        displayErrorStats(stats);
-        displayErrorList(errors.summary?.recent_errors || []);
+        console.log('Loaded error data:', { stats, errors, requestErrors });
+        
+        errorData = { stats, errors, requestErrors };
+        displayErrorStats(stats, requestErrors);
+        
+        const oldErrors = errors.summary?.recent_errors || [];
+        const newErrors = requestErrors.error_requests || [];
+        
+        console.log('Old errors:', oldErrors.length, 'New errors:', newErrors.length);
+        
+        displayCombinedErrorList(oldErrors, newErrors);
         
     } catch (error) {
         console.error('Error loading error data:', error);
@@ -647,10 +664,68 @@ async function refreshErrorData() {
     }
 }
 
-function displayErrorStats(stats) {
-    document.getElementById('errorTotalErrors').textContent = formatNumber(stats.total_errors || 0);
-    document.getElementById('errorErrors24h').textContent = formatNumber(stats.errors_24h || 0);
-    document.getElementById('errorErrors1h').textContent = formatNumber(stats.errors_1h || 0);
+function displayErrorStats(stats, requestErrors) {
+    // Комбинируем статистику из обеих систем
+    const totalErrors = (stats.total_errors || 0) + (requestErrors?.total_found || 0);
+    const errors24h = (stats.errors_24h || 0) + (requestErrors?.analytics?.by_category ? Object.values(requestErrors.analytics.by_category).reduce((a, b) => a + b, 0) : 0);
+    const errors1h = stats.errors_1h || 0; // Для часовой статистики используем только старую систему
+    
+    document.getElementById('errorTotalErrors').textContent = formatNumber(totalErrors);
+    document.getElementById('errorErrors24h').textContent = formatNumber(errors24h);
+    document.getElementById('errorErrors1h').textContent = formatNumber(errors1h);
+}
+
+function displayCombinedErrorList(oldErrors, requestErrors) {
+    const container = document.getElementById('errorRecentErrors');
+    if (!container) {
+        console.error('Container errorRecentErrors not found');
+        return;
+    }
+    
+    console.log('displayCombinedErrorList called with:', { 
+        oldErrors: oldErrors?.length || 0, 
+        requestErrors: requestErrors?.length || 0 
+    });
+    
+    const allErrors = [...(oldErrors || []), ...(requestErrors || [])];
+    
+    console.log('Total errors to display:', allErrors.length);
+    console.log('Sample errors:', allErrors.slice(0, 2));
+    
+    if (allErrors.length === 0) {
+        container.innerHTML = '<div class="alert alert-success">Нет ошибок за выбранный период</div>';
+        return;
+    }
+    
+    // Сортируем все ошибки по времени (новые сначала)
+    allErrors.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    let html = '';
+    let requestErrorCount = 0;
+    let oldErrorCount = 0;
+    
+    allErrors.forEach((error, index) => {
+        try {
+            // Определяем тип ошибки (старая система или новая)
+            const isRequestError = error.body_text !== undefined;
+            
+            console.log(`Error ${index}:`, { isRequestError, error_id: error.id || error.request_id, type: error.error_category || error.error_type });
+            
+            if (isRequestError) {
+                requestErrorCount++;
+                html += generateRequestErrorCard(error);
+            } else {
+                oldErrorCount++;
+                html += generateOldErrorCard(error);
+            }
+        } catch (e) {
+            console.error('Error generating card for:', error, e);
+        }
+    });
+    
+    console.log(`Generated ${requestErrorCount} request cards and ${oldErrorCount} old cards`);
+    
+    container.innerHTML = html;
 }
 
 function displayErrorList(errors) {
@@ -724,6 +799,13 @@ function getSeverityClass(severity) {
         case 'high': return 'warning';
         case 'medium': return 'info';
         case 'low': return 'secondary';
+        // Новые категории ошибок запросов
+        case 'client_error': return 'warning';
+        case 'server_error': return 'danger';
+        case 'validation_error': return 'info';
+        case 'timeout_error': return 'danger';
+        case 'not_found': return 'secondary';
+        case 'instant_failure': return 'danger';
         default: return 'secondary';
     }
 }
@@ -777,5 +859,242 @@ function openJaegerTrace(traceId) {
 // Экспорт функций для глобального использования
 window.refreshAllData = refreshAllData;
 window.updateStats = updateStats;
+// Функции для генерации карточек ошибок
+function generateRequestErrorCard(error) {
+    const severityClass = getSeverityClass(error.error_category);
+    const timeAgo = new Date(error.timestamp).toLocaleString('ru');
+    const duration = error.duration_ns ? (error.duration_ns / 1000000).toFixed(2) + 'ms' : 'N/A';
+    
+    return `
+        <div class="error-card card ${error.error_category}" style="margin-bottom: 1rem;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="card-title mb-0">
+                        <span class="badge bg-${severityClass} error-badge">REQUEST</span>
+                        <span class="badge bg-info">NEW</span>
+                        ${error.path || 'Unknown Path'}
+                    </h6>
+                    <small class="text-muted">${timeAgo}</small>
+                </div>
+                
+                <p class="card-text">${error.method} ${error.path} - ${error.error_category}</p>
+                
+                <div class="row text-small mb-2">
+                    <div class="col-sm-6">
+                        <strong>HTTP Status:</strong> ${error.http_status || 'N/A'}
+                    </div>
+                    <div class="col-sm-6">
+                        <strong>Duration:</strong> ${duration}
+                    </div>
+                    <div class="col-sm-6">
+                        <strong>Client IP:</strong> ${error.client_ip || 'N/A'}
+                    </div>
+                    <div class="col-sm-6">
+                        <strong>Request ID:</strong> ${error.request_id || 'N/A'}
+                    </div>
+                </div>
+                
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" type="button" 
+                            onclick="showRequestBodyFromApi('${error.request_id}')">
+                        <i class="bi bi-file-text"></i> Показать тело запроса
+                    </button>
+                    ${error.body_size_bytes ? `<small class="text-muted ms-2">(${error.body_size_bytes} bytes)</small>` : ''}
+                </div>
+                
+                ${error.headers ? `
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#headers-${error.id}" 
+                                aria-expanded="false">
+                            <i class="bi bi-list"></i> Показать заголовки
+                        </button>
+                        <div class="collapse mt-2" id="headers-${error.id}">
+                            <div class="stack-trace">
+                                ${Object.entries(error.headers).map(([key, value]) => `${key}: ${value}`).join('\\n')}
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function generateOldErrorCard(error) {
+    const severityClass = getSeverityClass(error.severity);
+    const timeAgo = new Date(error.timestamp).toLocaleString('ru');
+    
+    return `
+        <div class="error-card card ${error.severity}" style="margin-bottom: 1rem;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="card-title mb-0">
+                        <span class="badge bg-${severityClass} error-badge">${error.severity?.toUpperCase()}</span>
+                        ${error.component || 'Unknown Component'}
+                    </h6>
+                    <small class="text-muted">${timeAgo}</small>
+                </div>
+                
+                <p class="card-text">${error.message || 'No message available'}</p>
+                
+                <div class="row text-small">
+                    <div class="col-sm-6">
+                        <strong>Type:</strong> ${error.error_type || 'unknown'}
+                    </div>
+                    <div class="col-sm-6">
+                        <strong>Request ID:</strong> ${error.request_id || 'N/A'}
+                    </div>
+                </div>
+                
+                ${error.trace_id ? `
+                    <div class="mt-2">
+                        <a href="#" class="jaeger-link" onclick="openJaegerTrace('${error.trace_id}')">
+                            <i class="bi bi-search"></i> View in Jaeger
+                        </a>
+                    </div>
+                ` : ''}
+                
+                ${error.stack_trace ? `
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#stack-${error.request_id}" 
+                                aria-expanded="false">
+                            Show Stack Trace
+                        </button>
+                        <div class="collapse mt-2" id="stack-${error.request_id}">
+                            <div class="stack-trace">${error.stack_trace}</div>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Функция для показа тела запроса из API
+async function showRequestBodyFromApi(requestId) {
+    try {
+        console.log('Fetching request body for:', requestId);
+        
+        // Сначала получаем детали запроса
+        const detailResponse = await fetch(`/api/v1/requests/${requestId}`);
+        if (!detailResponse.ok) {
+            throw new Error(`HTTP ${detailResponse.status}: ${detailResponse.statusText}`);
+        }
+        
+        const requestDetail = await detailResponse.json();
+        console.log('Request detail:', requestDetail);
+        
+        // Затем получаем тело запроса
+        const bodyResponse = await fetch(`/api/v1/requests/${requestId}/body`);
+        if (!bodyResponse.ok) {
+            throw new Error(`HTTP ${bodyResponse.status}: ${bodyResponse.statusText}`);
+        }
+        
+        const bodyData = await bodyResponse.json();
+        console.log('Body data:', bodyData);
+        
+        const bodyText = bodyData.body || bodyData.body_text || 'Тело запроса пустое';
+        
+        showRequestBody(requestId, bodyText, requestDetail);
+        
+    } catch (error) {
+        console.error('Error fetching request body:', error);
+        alert(`Ошибка загрузки тела запроса: ${error.message}`);
+    }
+}
+
+// Функция для показа тела запроса в модальном окне
+function showRequestBody(requestId, bodyText, requestDetail = null) {
+    const detailsSection = requestDetail ? `
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <strong>Метод:</strong> ${requestDetail.method}<br>
+                <strong>Путь:</strong> ${requestDetail.path}<br>
+                <strong>HTTP Статус:</strong> ${requestDetail.http_status}
+            </div>
+            <div class="col-md-6">
+                <strong>Client IP:</strong> ${requestDetail.client_ip}<br>
+                <strong>Длительность:</strong> ${requestDetail.duration_ns ? (requestDetail.duration_ns / 1000000).toFixed(2) + 'ms' : 'N/A'}<br>
+                <strong>Размер:</strong> ${requestDetail.body_size_bytes} bytes
+            </div>
+        </div>
+        <hr>
+    ` : '';
+
+    const modalHtml = `
+        <div class="modal fade" id="requestBodyModal" tabindex="-1" aria-labelledby="requestBodyModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="requestBodyModalLabel">
+                            <i class="bi bi-file-text"></i> Детали запроса
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Request ID:</strong></label>
+                            <code>${requestId}</code>
+                        </div>
+                        
+                        ${detailsSection}
+                        
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Тело запроса:</strong></label>
+                            <pre class="bg-light p-3 border rounded" style="max-height: 400px; overflow-y: auto;"><code id="request-body-content">${bodyText}</code></pre>
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="copyToClipboard(\`${bodyText.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">
+                                <i class="bi bi-clipboard"></i> Копировать
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="formatJSON()">
+                                <i class="bi bi-code"></i> Форматировать JSON
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Удаляем существующий модал если есть
+    const existingModal = document.getElementById('requestBodyModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Добавляем новый модал
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Показываем модал
+    const modal = new bootstrap.Modal(document.getElementById('requestBodyModal'));
+    modal.show();
+}
+
+// Утилиты
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Скопировано в буфер обмена!');
+    }).catch(err => {
+        console.error('Error copying to clipboard:', err);
+    });
+}
+
+function formatJSON() {
+    try {
+        const codeElement = document.querySelector('#request-body-content');
+        const text = codeElement.textContent;
+        const formatted = JSON.stringify(JSON.parse(text), null, 2);
+        codeElement.textContent = formatted;
+    } catch (e) {
+        alert('Не удалось отформатировать как JSON: ' + e.message);
+    }
+}
+
 window.refreshErrorData = refreshErrorData;
 window.openJaegerTrace = openJaegerTrace;
+window.showRequestBody = showRequestBody;
+window.showRequestBodyFromApi = showRequestBodyFromApi;

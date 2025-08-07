@@ -35,7 +35,7 @@ Write-Host "Deploying to cluster: $Cluster with version: $Version"
 # Обновляем версию образа в deployment.yaml
 $deploymentFile = "k8s/deployment.yaml"
 $content = Get-Content $deploymentFile -Raw
-$content = $content -replace "gimmyhat/pdf-service-go:.*", "gimmyhat/pdf-service-go:$Version"
+$content = $content -replace "dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:.*", "dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:$Version"
 $content | Set-Content $deploymentFile
 
 Write-Host "Updated image version in deployment.yaml"

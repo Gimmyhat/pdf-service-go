@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
       - name: nas-pdf-service
-        image: gimmyhat/pdf-service-go:latest
+        image: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -72,6 +72,8 @@ spec:
           value: "3"
         - name: GOTENBERG_API_URL
           value: "http://nas-pdf-service-gotenberg:3000"
+        - name: GOTENBERG_CLIENT_TIMEOUT
+          value: "60s"
         - name: CIRCUIT_BREAKER_FAILURE_THRESHOLD
           value: "10"
         - name: CIRCUIT_BREAKER_RESET_TIMEOUT
@@ -96,6 +98,9 @@ spec:
           value: "100ms"
         - name: GOTENBERG_RETRY_BACKOFF_FACTOR
           value: "1.5"
+        # Добавляем GOTENBERG_URL как alias для обратной совместимости
+        - name: GOTENBERG_URL
+          value: "http://nas-pdf-service-gotenberg:3000"
         resources:
           requests:
             memory: "1Gi"

@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
       - name: nas-pdf-service
-        image: gimmyhat/pdf-service-go:latest
+        image: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

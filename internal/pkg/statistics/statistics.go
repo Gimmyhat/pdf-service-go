@@ -26,6 +26,16 @@ func GetInstance() *Statistics {
 	return instance
 }
 
+// GetPostgresDB возвращает PostgresDB из statistics instance
+func GetPostgresDB() *PostgresDB {
+	if instance != nil && instance.db != nil {
+		if pgDB, ok := instance.db.(*PostgresDB); ok {
+			return pgDB
+		}
+	}
+	return nil
+}
+
 // Initialize инициализирует синглтон Statistics
 func Initialize(cfg Config) error {
 	var err error
@@ -68,6 +78,54 @@ func (s *Statistics) GetStatistics(since time.Time) (*Stats, error) {
 // Close закрывает соединение с базой данных
 func (s *Statistics) Close() error {
 	return s.db.Close()
+}
+
+// GetDB возвращает интерфейс базы данных для прямого доступа
+func (s *Statistics) GetDB() DB {
+	return s.db
+}
+
+// LogError записывает детальную информацию об ошибке
+func (s *Statistics) LogError(errorDetails *ErrorDetails) error {
+	return s.db.LogError(errorDetails)
+}
+
+// GetErrorSummary возвращает сводку ошибок
+func (s *Statistics) GetErrorSummary(since time.Time, limit int) (*ErrorSummary, error) {
+	// Получаем последние ошибки
+	recentErrors, err := s.db.GetRecentErrors(limit, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent errors: %w", err)
+	}
+
+	// Получаем паттерны ошибок
+	patterns, err := s.db.GetErrorPatterns(since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get error patterns: %w", err)
+	}
+
+	// Получаем счетчики
+	total, last24h, lastHour, err := s.db.GetErrorCounts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get error counts: %w", err)
+	}
+
+	// Добавляем решения к ошибкам
+	for i := range recentErrors {
+		recentErrors[i].RequestDetails["solutions"] = GetErrorSolutions(
+			recentErrors[i].ErrorType,
+			recentErrors[i].Component,
+		)
+	}
+
+	return &ErrorSummary{
+		RecentErrors:   recentErrors,
+		ErrorPatterns:  patterns,
+		TotalErrors:    total,
+		ErrorsLast24h:  last24h,
+		ErrorsLastHour: lastHour,
+		TopErrorTypes:  patterns, // Уже отсортированы по количеству
+	}, nil
 }
 
 // Типы ответов API

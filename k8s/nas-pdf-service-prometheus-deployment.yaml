@@ -107,7 +107,7 @@ spec:
       serviceAccountName: prometheus
       containers:
       - name: nas-pdf-service-prometheus
-        image: prom/prometheus:latest
+        image: dh-mirror.gitverse.ru/prom/prometheus:latest
         args:
         - "--config.file=/etc/prometheus/prometheus.yml"
         - "--storage.tsdb.path=/prometheus"

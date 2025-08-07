@@ -6,6 +6,7 @@ import (
 	"pdf-service-go/internal/api/handlers"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/statistics"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,15 +15,19 @@ import (
 
 // Handlers содержит все обработчики API
 type Handlers struct {
-	PDF        *handlers.PDFHandler
-	Statistics *handlers.StatisticsHandler
+	PDF             *handlers.PDFHandler
+	Statistics      *handlers.StatisticsHandler
+	Errors          *handlers.ErrorHandler
+	RequestAnalysis *handlers.RequestAnalysisHandler
 }
 
 // NewHandlers создает новые обработчики
 func NewHandlers(service pdf.Service) *Handlers {
 	return &Handlers{
-		PDF:        handlers.NewPDFHandler(service),
-		Statistics: handlers.NewStatisticsHandler(),
+		PDF:             handlers.NewPDFHandler(service),
+		Statistics:      handlers.NewStatisticsHandler(),
+		Errors:          handlers.NewErrorHandler(),
+		RequestAnalysis: handlers.NewRequestAnalysisHandler(statistics.GetPostgresDB()),
 	}
 }
 

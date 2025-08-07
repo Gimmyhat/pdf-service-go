@@ -5,7 +5,7 @@ global:
 
 # Настройки образа
 image:
-  repository: gimmyhat/pdf-service-go
+  repository: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go
   tag: latest
   pullPolicy: Always
 

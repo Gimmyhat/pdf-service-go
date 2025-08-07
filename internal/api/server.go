@@ -14,6 +14,7 @@ import (
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/errortracker"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/statistics"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -57,6 +58,22 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}))
+
+	// Добавляем middleware для захвата запросов (до логирования)
+	captureConfig := statistics.RequestCaptureConfig{
+		EnableCapture:     true,
+		CaptureOnlyErrors: false,       // Захватываем все запросы пока тестируем
+		MaxBodySize:       1024 * 1024, // 1MB максимум
+		ExcludePaths:      []string{"/health", "/metrics", "/favicon.ico"},
+		ExcludeHeaders:    []string{"authorization", "cookie", "x-api-key"},
+		RetentionDays:     7,
+		MaskSensitiveData: true,
+	}
+
+	db := statistics.GetPostgresDB()
+	if db != nil {
+		router.Use(middleware.RequestCaptureMiddleware(db, captureConfig))
+	}
 
 	// Добавляем middleware для логирования с использованием zap
 	router.Use(func(c *gin.Context) {
@@ -134,6 +151,12 @@ func (s *Server) SetupRoutes() {
 	s.Router.GET("/api/v1/errors", s.Handlers.Errors.GetErrors)
 	s.Router.GET("/api/v1/errors/stats", s.Handlers.Errors.GetErrorStats)
 	s.Router.GET("/api/v1/errors/:id", s.Handlers.Errors.GetErrorDetails)
+
+	// API для анализа детальных запросов
+	s.Router.GET("/api/v1/requests/error", s.Handlers.RequestAnalysis.GetErrorRequests)
+	s.Router.GET("/api/v1/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
+	s.Router.GET("/api/v1/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
+	s.Router.GET("/api/v1/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
 
 	// Единый дашборд
 	s.Router.GET("/dashboard", func(c *gin.Context) {

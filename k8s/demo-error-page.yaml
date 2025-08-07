@@ -1,0 +1,232 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-error-page
+  namespace: print-serv
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PDF Service - Error Analysis System Demo</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    </head>
+    <body>
+        <div class="container mt-4">
+            <div class="row">
+                <div class="col-12">
+                    <h1 class="text-center mb-4">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        Система детального отслеживания ошибок
+                    </h1>
+                    
+                    <div class="alert alert-success" role="alert">
+                        <h4 class="alert-heading">✅ Система реализована и готова!</h4>
+                        <p>Полная система детального отслеживания и анализа ошибок успешно разработана. Ожидается синхронизация российского зеркала Docker Hub.</p>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-primary text-white">
+                                    <h5><i class="bi bi-database"></i> База данных ошибок</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-unstyled">
+                                        <li>✅ Таблица `error_logs` с полной информацией</li>
+                                        <li>✅ Автоматическая классификация по типам</li>
+                                        <li>✅ Уровни критичности (critical, high, medium, low)</li>
+                                        <li>✅ Интеграция с OpenTelemetry трейсингом</li>
+                                        <li>✅ Контекст запросов и стек-трейсы</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <h5><i class="bi bi-api"></i> API Endpoints</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-unstyled">
+                                        <li>✅ <code>GET /api/v1/errors</code> - Детальные ошибки с фильтрацией</li>
+                                        <li>✅ <code>GET /api/v1/errors/stats</code> - Статистика и здоровье</li>
+                                        <li>✅ <code>GET /api/v1/errors/:id</code> - Детали конкретной ошибки</li>
+                                        <li>✅ <code>GET /test-error</code> - Тестовая генерация ошибок</li>
+                                        <li>✅ <code>GET /test-timeout</code> - Тест timeout ошибок</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-success text-white">
+                                    <h5><i class="bi bi-display"></i> Веб-интерфейс</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-unstyled">
+                                        <li>✅ Современный Bootstrap дизайн</li>
+                                        <li>✅ Реальное время обновления (30s)</li>
+                                        <li>✅ Фильтры: период, тип, компонент, критичность</li>
+                                        <li>✅ Стек-трейсы с подсветкой синтаксиса</li>
+                                        <li>✅ Прямые ссылки в Jaeger трейсинг</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-warning text-white">
+                                    <h5><i class="bi bi-lightbulb"></i> Умная диагностика</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul class="list-unstyled">
+                                        <li>✅ Автоматическая классификация ошибок</li>
+                                        <li>✅ Решения для timeout: "Увеличить timeout до 90s"</li>
+                                        <li>✅ Решения для validation: "Проверить JSON схему"</li>
+                                        <li>✅ Решения для connection: "Проверить DNS"</li>
+                                        <li>✅ Индикатор здоровья системы</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-header bg-dark text-white">
+                            <h5><i class="bi bi-info-circle"></i> Текущий статус</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6>Схема развертывания:</h6>
+                                    <ol>
+                                        <li>✅ <strong>Push в Docker Hub:</strong> gimmyhat/pdf-service-go:latest</li>
+                                        <li>⏳ <strong>Синхронизация зеркала:</strong> dh-mirror.gitverse.ru (15-30 мин)</li>
+                                        <li>⏳ <strong>Pull в кластере:</strong> imagePullPolicy: Always</li>
+                                        <li>⏳ <strong>Активация:</strong> /errors, /api/v1/errors</li>
+                                    </ol>
+                                    
+                                    <h6>Временные теги:</h6>
+                                    <ul>
+                                        <li><code>errors-v2025080602</code> - Уникальный тег для форсирования обновления</li>
+                                        <li><code>hotfix-env</code> - Исправление переменных окружения</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="text-center">
+                                        <h4><span class="badge bg-info">Ожидание синхронизации</span></h4>
+                                        <p class="mt-3">Образ: <br><code>dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:errors-v2025080602</code></p>
+                                        
+                                        <div class="mt-3">
+                                            <h6>Текущие доступные endpoints:</h6>
+                                            <a href="http://172.27.239.30:31005/health" target="_blank" class="btn btn-sm btn-success">Health</a>
+                                            <a href="http://172.27.239.30:31005/stats" target="_blank" class="btn btn-sm btn-primary">Stats</a>
+                                            <a href="http://172.27.239.30:31005/metrics" target="_blank" class="btn btn-sm btn-secondary">Metrics</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info mt-4" role="alert">
+                        <h6><i class="bi bi-clock"></i> Что происходит сейчас:</h6>
+                        <p class="mb-2">1. <strong>Образ успешно загружен</strong> в Docker Hub с новой системой отслеживания ошибок</p>
+                        <p class="mb-2">2. <strong>Российское зеркало синхронизируется</strong> с Docker Hub (обычно 15-30 минут)</p>
+                        <p class="mb-2">3. <strong>Кластер автоматически скачает</strong> обновленный образ благодаря imagePullPolicy: Always</p>
+                        <p class="mb-0">4. <strong>Endpoints станут доступны:</strong> /errors, /api/v1/errors, /test-error, /test-timeout</p>
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <button class="btn btn-primary btn-lg me-3" onclick="checkStatus()">
+                            <i class="bi bi-arrow-clockwise"></i> Проверить статус
+                        </button>
+                        <a href="http://172.27.239.30:31005/stats" class="btn btn-success btn-lg" target="_blank">
+                            <i class="bi bi-graph-up"></i> Текущая статистика
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function checkStatus() {
+                fetch('/errors')
+                    .then(response => {
+                        if (response.ok) {
+                            alert('🎉 Система отслеживания ошибок активна! Перенаправляю на /errors');
+                            window.location.href = '/errors';
+                        } else {
+                            alert('⏳ Система еще синхронизируется. Попробуйте через несколько минут.');
+                        }
+                    })
+                    .catch(() => {
+                        alert('⏳ Система еще синхронизируется. Попробуйте через несколько минут.');
+                    });
+            }
+
+            // Автопроверка каждые 30 секунд
+            setInterval(function() {
+                fetch('/errors')
+                    .then(response => {
+                        if (response.ok) {
+                            document.body.innerHTML = '<div class="container mt-5 text-center"><h1 class="text-success"><i class="bi bi-check-circle-fill"></i> Система активна!</h1><p>Перенаправление на /errors...</p></div>';
+                            setTimeout(() => window.location.href = '/errors', 2000);
+                        }
+                    })
+                    .catch(() => {});
+            }, 30000);
+        </script>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-error-page
+  namespace: print-serv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-error-page
+  template:
+    metadata:
+      labels:
+        app: demo-error-page
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: html-content
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html-content
+        configMap:
+          name: demo-error-page
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-error-page
+  namespace: print-serv
+spec:
+  selector:
+    app: demo-error-page
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 31006
+  type: NodePort

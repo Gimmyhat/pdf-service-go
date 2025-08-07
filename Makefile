@@ -1,16 +1,19 @@
 .PHONY: build test lint tidy clean \
-        docker-build docker-push new-version build-local \
+        docker-build docker-push docker-push-latest new-version build-local \
         check-env get-version status logs \
-        check-storage check-test check-prod check-grafana check-prometheus check-jaeger \
-        deploy deploy-local deploy-storage \
+        check-storage check-test check-prod check-grafana check-prometheus check-jaeger test-error-system \
+        deploy deploy-local deploy-storage force-update check-mirror get-service-url \
         dev run-local port-forward-grafana port-forward-prometheus port-forward-jaeger \
         clear-stats \
-        helm-repos helm-deps helm-template helm-lint helm-deploy helm-uninstall helm-status helm-history helm-rollback
+        helm-repos helm-deps helm-template helm-lint helm-deploy helm-uninstall helm-status helm-history helm-rollback \
+        update-template update-mirror show-mirror-usage
 
 # Основные переменные
 APP_NAME = pdf-service-go
 DOCKER_REPO = gimmyhat
-DOCKER_IMAGE = $(DOCKER_REPO)/$(APP_NAME)
+DOCKER_MIRROR = dh-mirror.gitverse.ru
+DOCKER_HUB_IMAGE = $(DOCKER_REPO)/$(APP_NAME)
+DOCKER_IMAGE = $(DOCKER_MIRROR)/$(DOCKER_REPO)/$(APP_NAME)
 NAMESPACE = print-serv
 
 # Автоматическая генерация версии в формате YY.MM.DD.HHMM
@@ -53,7 +56,11 @@ docker-build:
 	docker build -t $(DOCKER_IMAGE):$(VERSION) .
 
 docker-push:
-	docker push $(DOCKER_IMAGE):$(VERSION)
+	@echo "Pushing to Docker Hub ($(DOCKER_HUB_IMAGE):$(VERSION))..."
+	docker tag $(DOCKER_IMAGE):$(VERSION) $(DOCKER_HUB_IMAGE):$(VERSION)
+	docker push $(DOCKER_HUB_IMAGE):$(VERSION)
+	@echo "Successfully pushed to Docker Hub"
+	@echo "Note: Russian mirror ($(DOCKER_MIRROR)) will sync automatically"
 
 build-local:
 	@echo "Building Docker image for local development..."
@@ -65,16 +72,21 @@ new-version:
 	@echo "Building new version: $(NEW_VERSION)"
 	$(MAKE) docker-build VERSION=$(NEW_VERSION)
 	$(MAKE) docker-push VERSION=$(NEW_VERSION)
-	@echo "$(NEW_VERSION)" > current_version.txt
+	$(MAKE) docker-push-latest VERSION=$(NEW_VERSION)
+	@powershell -Command "Set-Content -Path 'current_version.txt' -Value '$(NEW_VERSION)' -NoNewline"
 	@echo "New version $(NEW_VERSION) has been built and pushed"
+	@echo "Both versioned and latest tags have been updated"
+
+# Push образа как latest (для обновления зеркала)
+docker-push-latest:
+	@echo "Tagging and pushing as latest..."
+	docker tag $(DOCKER_IMAGE):$(VERSION) $(DOCKER_HUB_IMAGE):latest
+	docker push $(DOCKER_HUB_IMAGE):latest
+	@echo "Latest tag updated in Docker Hub"
 
 # Получение текущей версии
 get-version:
-	@if [ -f current_version.txt ]; then \
-		echo "Current version: $$(cat current_version.txt)"; \
-	else \
-		echo "Current version: latest (no current_version.txt found)"; \
-	fi
+	@powershell -Command "if (Test-Path current_version.txt) { Write-Host \"Current version: $$(Get-Content current_version.txt)\" } else { Write-Host \"Current version: latest (no current_version.txt found)\" }"
 
 # ============================================================================
 # Kubernetes команды
@@ -123,68 +135,16 @@ check-prod: check-storage
 # Универсальная команда деплоя
 deploy: check-env
 	@echo "Checking PostgreSQL ConfigMap..."
-	@if ! kubectl get configmap nas-pdf-service-postgres-config -n $(NAMESPACE) > /dev/null 2>&1; then \
-		echo "Creating PostgreSQL ConfigMap..."; \
-		kubectl create configmap nas-pdf-service-postgres-config \
-			--from-literal=POSTGRES_DB=pdf_service \
-			--from-literal=POSTGRES_USER=pdf_service \
-			--from-literal=POSTGRES_PASSWORD=pdf_service_pass \
-			-n $(NAMESPACE); \
-	fi
+	@powershell -Command "$$configMapExists = kubectl get configmap nas-pdf-service-postgres-config -n $(NAMESPACE) 2>$$null; if (-not $$configMapExists) { Write-Host 'Creating PostgreSQL ConfigMap...'; kubectl create configmap nas-pdf-service-postgres-config --from-literal=POSTGRES_DB=pdf_service --from-literal=POSTGRES_USER=pdf_service --from-literal=POSTGRES_PASSWORD=pdf_service_pass -n $(NAMESPACE) }"
 	@echo "Checking template ConfigMap..."
-	@if ! kubectl get configmap nas-pdf-service-templates -n $(NAMESPACE) > /dev/null 2>&1; then \
-		echo "Creating template ConfigMap..."; \
-		kubectl create configmap nas-pdf-service-templates \
-			--from-file=template.docx=internal/domain/pdf/templates/template.docx \
-			-n $(NAMESPACE); \
-	fi
+	@powershell -Command "$$templateExists = kubectl get configmap nas-pdf-service-templates -n $(NAMESPACE) 2>$$null; if (-not $$templateExists) { Write-Host 'Creating template ConfigMap...'; kubectl create configmap nas-pdf-service-templates --from-file=template.docx=internal/domain/pdf/templates/template.docx -n $(NAMESPACE) }"
 	@echo "Deploying PostgreSQL..."
 	kubectl config use-context $(CONTEXT)
 	kubectl apply -f k8s/nas-pdf-service-postgres-deployment.yaml -n $(NAMESPACE)
 	@echo "Waiting for PostgreSQL to be ready..."
 	@kubectl wait --for=condition=ready pod -l app=nas-pdf-service-postgres -n $(NAMESPACE) --timeout=180s || echo "Warning: PostgreSQL pod not ready in time. Continuing anyway..."
 	@echo "Deploying main service..."
-	@DEPLOY_VERSION="$(VERSION)"; \
-	if [ -z "$(VERSION)" ] || [ "$(VERSION)" = "latest" ]; then \
-		if [ -f current_version.txt ]; then \
-			DEPLOY_VERSION=$$(cat current_version.txt); \
-			echo "Using version from current_version.txt: $$DEPLOY_VERSION"; \
-		else \
-			echo "Error: No version specified and no current_version.txt found. Please run 'make new-version' first or specify VERSION."; \
-			exit 1; \
-		fi; \
-	else \
-		echo "Using specified version: $$DEPLOY_VERSION"; \
-	fi; \
-	if [ "$(ENV)" = "prod" ]; then \
-		read -p "Are you sure you want to deploy to production? (y/N) " confirm; \
-		if [ "$$confirm" != "y" ]; then \
-			echo "Deployment cancelled."; \
-			exit 1; \
-		fi; \
-	fi; \
-	kubectl config use-context $(CONTEXT); \
-	echo "Applying all configurations..."; \
-	kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-templates-configmap-filled.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); \
-	kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n $(NAMESPACE); \
-	echo "Updating deployment image..."; \
-	kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); \
-	echo "Restarting deployments..."; \
-	kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); \
-	kubectl rollout restart deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); \
-	kubectl rollout restart deployment/nas-pdf-service-prometheus -n $(NAMESPACE); \
-	echo "Waiting for rollouts to complete..."; \
-	kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); \
-	kubectl rollout status deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); \
-	kubectl rollout status deployment/nas-pdf-service-prometheus -n $(NAMESPACE); \
-	echo "Deployment to $(ENV) completed successfully"; \
-	echo "Use 'make status ENV=$(ENV)' to check deployment status"; \
-	echo "Use 'make logs ENV=$(ENV)' to view logs"
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim(); Write-Host \"Using version from current_version.txt: $$DEPLOY_VERSION\" } else { Write-Host 'Error: No version specified and no current_version.txt found. Please run ''make new-version'' first or specify VERSION.'; exit 1 } } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; if ('$(ENV)' -eq 'prod') { $$confirm = Read-Host -Prompt 'Are you sure you want to deploy to production? (y/N)'; if ($$confirm -ne 'y') { Write-Host 'Deployment cancelled.'; exit 1 } }; kubectl config use-context $(CONTEXT); Write-Host 'Applying all configurations...'; kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); kubectl create configmap nas-pdf-service-templates --from-file=template.docx=internal/domain/pdf/templates/template.docx -n $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -; kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n $(NAMESPACE); Write-Host 'Updating deployment image...'; kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); Write-Host 'Restarting deployments...'; kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); kubectl rollout restart deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); kubectl rollout restart deployment/nas-pdf-service-prometheus -n $(NAMESPACE); Write-Host 'Waiting for rollouts to complete...'; kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); kubectl rollout status deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); kubectl rollout status deployment/nas-pdf-service-prometheus -n $(NAMESPACE); Write-Host 'Deployment to $(ENV) completed successfully'; Write-Host \"Use 'make status ENV=$(ENV)' to check deployment status\"; Write-Host \"Use 'make logs ENV=$(ENV)' to view logs\""
 
 # Деплой локально через docker-compose
 deploy-local:
@@ -233,6 +193,12 @@ check-jaeger:
 	@echo "Checking Jaeger status..."
 	kubectl get pods -n $(NAMESPACE) -l app=nas-jaeger
 	kubectl get svc -n $(NAMESPACE) nas-jaeger
+
+# Проверка endpoints системы отслеживания ошибок
+test-error-system: check-env
+	@echo "Testing error tracking system in $(ENV) environment..."
+	kubectl config use-context $(CONTEXT)
+	@powershell -Command "Write-Host 'Getting service info...'; try { $$serviceInfo = kubectl get svc nas-pdf-service -n $(NAMESPACE) -o jsonpath='{.spec.ports[0].nodePort}'; $$nodeIP = if ('$(ENV)' -eq 'prod') { '172.27.239.2' } else { '172.27.239.30' }; $$url = \"http://$${nodeIP}:$${serviceInfo}\"; Write-Host \"Service URL: $$url\"; Write-Host 'Testing /health...'; try { $$response = Invoke-RestMethod -Uri \"$$url/health\" -Method GET -TimeoutSec 10; Write-Host \"✅ Health: OK\" } catch { Write-Host \"❌ Health: Failed - $$($$($$_.Exception.Message))\" }; Write-Host 'Testing /errors...'; try { $$response = Invoke-WebRequest -Uri \"$$url/errors\" -Method GET -TimeoutSec 10; if ($$response.StatusCode -eq 200) { Write-Host \"✅ Errors UI: OK\" } else { Write-Host \"❌ Errors UI: Status $$($$($$response.StatusCode))\" } } catch { Write-Host \"❌ Errors UI: Failed - $$($$($$_.Exception.Message))\" }; Write-Host 'Testing /api/v1/errors/stats...'; try { $$response = Invoke-RestMethod -Uri \"$$url/api/v1/errors/stats\" -Method GET -TimeoutSec 10; Write-Host \"✅ Errors API: OK\" } catch { Write-Host \"❌ Errors API: Failed - $$($$($$_.Exception.Message))\" }; Write-Host 'Generating test error...'; try { $$response = Invoke-WebRequest -Uri \"$$url/test-error\" -Method GET -TimeoutSec 10; Write-Host \"✅ Test error generated\" } catch { Write-Host \"❌ Test error failed - $$($$($$_.Exception.Message))\" }; Write-Host 'Testing completed.' } catch { Write-Host \"❌ Failed to get service info: $$($$($$_.Exception.Message))\" }"
 
 # ============================================================================
 # Локальная разработка
@@ -346,4 +312,44 @@ helm-rollback: check-env
 			exit 1; \
 		} \
 	fi
-	helm rollback pdf-service --namespace $(NAMESPACE) 
+	helm rollback pdf-service --namespace $(NAMESPACE)
+
+# ============================================================================
+# Утилиты для шаблонов
+# ============================================================================
+
+# Обновление шаблона в Kubernetes
+update-template:
+	@echo "Updating template in Kubernetes..."
+	kubectl create configmap nas-pdf-service-templates --from-file=template.docx=internal/domain/pdf/templates/template.docx -n $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+	@echo "Restarting pods to apply new template..."
+	kubectl rollout restart deployment nas-pdf-service -n $(NAMESPACE)
+	kubectl rollout status deployment nas-pdf-service -n $(NAMESPACE)
+	@echo "Template updated successfully"
+
+# Обновление зеркала во всех файлах
+update-mirror:
+	@echo "Current mirror: $(DOCKER_MIRROR)"
+	@powershell -Command "if ('$(NEW_MIRROR)' -eq '') { Write-Host 'Error: Please specify NEW_MIRROR variable'; Write-Host 'Example: make update-mirror NEW_MIRROR=new-mirror.example.com'; exit 1 }; Write-Host 'Updating mirror from $(DOCKER_MIRROR) to $(NEW_MIRROR)...'; $$files = @('k8s/*.yaml', 'helm/pdf-service/values.yaml', '.github/workflows/*.yaml'); foreach ($$pattern in $$files) { Get-ChildItem $$pattern -ErrorAction SilentlyContinue | ForEach-Object { $$content = Get-Content $$_.FullName -Raw; if ($$content -match '$(DOCKER_MIRROR)') { Write-Host \"Updating: $$($_.Name)\"; $$newContent = $$content -replace '$(DOCKER_MIRROR)', '$(NEW_MIRROR)'; Set-Content -Path $$_.FullName -Value $$newContent -NoNewline } } }; Write-Host 'Updating Makefile...'; $$makefileContent = Get-Content 'Makefile' -Raw; $$newMakefileContent = $$makefileContent -replace 'DOCKER_MIRROR = $(DOCKER_MIRROR)', \"DOCKER_MIRROR = $(NEW_MIRROR)\"; Set-Content -Path 'Makefile' -Value $$newMakefileContent -NoNewline; Write-Host 'Mirror update completed. New mirror: $(NEW_MIRROR)'"
+
+# Показать все файлы использующие зеркало
+show-mirror-usage:
+	@echo "Files using mirror $(DOCKER_MIRROR):"
+	@powershell -Command "$$files = @('k8s/*.yaml', 'helm/pdf-service/values.yaml', '.github/workflows/*.yaml', 'Makefile'); foreach ($$pattern in $$files) { Get-ChildItem $$pattern -ErrorAction SilentlyContinue | ForEach-Object { $$content = Get-Content $$_.FullName -Raw; if ($$content -match '$(DOCKER_MIRROR)') { Write-Host \"  $$($$($$_.Name))\" } } }"
+
+# Принудительное обновление deployment (когда зеркало не синхронизировалось)
+force-update: check-env
+	@echo "Force updating deployment in $(ENV) environment..."
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim(); Write-Host \"Using version from current_version.txt: $$DEPLOY_VERSION\" } else { Write-Host 'Error: No version specified and no current_version.txt found.'; exit 1 } } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; kubectl config use-context $(CONTEXT); Write-Host 'Force updating image...'; kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); Write-Host 'Restarting deployment...'; kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); Write-Host 'Waiting for rollout...'; kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); Write-Host 'Force update completed for $(ENV)'"
+
+# Проверка синхронизации зеркала
+check-mirror: check-env
+	@echo "Checking if mirror is synchronized..."
+	kubectl config use-context $(CONTEXT)
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim() } else { $$DEPLOY_VERSION = 'latest' } }; Write-Host \"Checking image: $(DOCKER_IMAGE):$$DEPLOY_VERSION\"; $$pod = kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service -o jsonpath='{.items[0].metadata.name}'; if ($$pod) { Write-Host \"Current pod: $$pod\"; kubectl describe pod $$pod -n $(NAMESPACE) | findstr 'Image:' } else { Write-Host 'No pods found' }"
+
+# Получение URL сервиса
+get-service-url: check-env
+	@echo "Getting service URL for $(ENV) environment..."
+	kubectl config use-context $(CONTEXT)
+	@powershell -Command "try { $$serviceInfo = kubectl get svc nas-pdf-service -n $(NAMESPACE) -o jsonpath='{.spec.ports[0].nodePort}'; Write-Host \"NodePort: $$serviceInfo\"; Write-Host \"Service type: NodePort\"; Write-Host \"\"; Write-Host \"To access the service:\"; Write-Host \"  Replace <NODE_IP> with the actual cluster node IP\"; Write-Host \"  URL: http://<NODE_IP>:$$serviceInfo\"; Write-Host \"\"; Write-Host \"Endpoints:\"; Write-Host \"  Health:     http://<NODE_IP>:$$serviceInfo/health\"; Write-Host \"  Stats:      http://<NODE_IP>:$$serviceInfo/stats\"; Write-Host \"  Errors UI:  http://<NODE_IP>:$$serviceInfo/errors\"; Write-Host \"  Errors API: http://<NODE_IP>:$$serviceInfo/api/v1/errors\"; Write-Host \"  Test Error: http://<NODE_IP>:$$serviceInfo/test-error\"; Write-Host \"\"; Write-Host \"Known IPs:\"; Write-Host \"  Test cluster:  172.27.239.30\"; Write-Host \"  Prod cluster:  172.27.239.2\" } catch { Write-Host \"❌ Failed to get service info: $$($_.Exception.Message)\" }" 

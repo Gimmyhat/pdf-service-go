@@ -23,4 +23,16 @@ type DB interface {
 
 	// Close закрывает соединение с базой данных
 	Close() error
+
+	// LogError записывает детальную информацию об ошибке
+	LogError(errorDetails *ErrorDetails) error
+
+	// GetRecentErrors возвращает последние ошибки
+	GetRecentErrors(limit int, since time.Time) ([]ErrorDetails, error)
+
+	// GetErrorPatterns возвращает паттерны ошибок для анализа
+	GetErrorPatterns(since time.Time) ([]ErrorPattern, error)
+
+	// GetErrorCounts возвращает количество ошибок за разные периоды
+	GetErrorCounts() (total, last24h, lastHour int64, err error)
 }
