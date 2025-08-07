@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Service - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .nav-tabs .nav-link {
+            color: #495057;
+            border: 1px solid transparent;
+            border-radius: 0.375rem 0.375rem 0 0;
+        }
+        .nav-tabs .nav-link.active {
+            color: #0d6efd;
+            background-color: #fff;
+            border-color: #dee2e6 #dee2e6 #fff;
+        }
+        .nav-tabs .nav-link:hover {
+            color: #0d6efd;
+            border-color: #e9ecef #e9ecef #dee2e6;
+        }
+        
+        .tab-content {
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 0.375rem 0.375rem;
+            padding: 1.5rem;
+            background-color: #fff;
+        }
+        
+        .card {
+            margin-bottom: 1rem;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+        }
+        
+        .period-selector {
+            margin-bottom: 1rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-item {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.9rem;
+            border: 1px solid #e9ecef;
+        }
+        
+        .stat-label {
+            color: #6c757d;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #198754;
+        }
+        
+        .charts-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .charts-row-small {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        
+        /* Error styles */
+        .error-card {
+            margin-bottom: 1rem;
+            border-left: 4px solid #dc3545;
+        }
+        .error-card.warning {
+            border-left-color: #ffc107;
+        }
+        .error-card.critical {
+            border-left-color: #dc3545;
+            background-color: #fff5f5;
+        }
+        .error-card.medium {
+            border-left-color: #fd7e14;
+        }
+        .error-card.low {
+            border-left-color: #6c757d;
+        }
+        
+        .error-badge {
+            font-size: 0.8rem;
+        }
+        
+        .stack-trace {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .filter-card {
+            background-color: #f8f9fa;
+            border: none;
+            margin-bottom: 1rem;
+        }
+        
+        .health-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .health-healthy { background-color: #28a745; }
+        .health-warning { background-color: #ffc107; }
+        .health-critical { background-color: #dc3545; }
+        .health-degraded { background-color: #fd7e14; }
+        
+        .jaeger-link {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .jaeger-link:hover {
+            text-decoration: underline;
+        }
+        
+        .refresh-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0.5rem;
+        }
+        
+        .metric-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric-card {
+            text-align: center;
+            padding: 1.5rem;
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-row, .charts-row-small {
+                grid-template-columns: 1fr;
+            }
+            .metric-summary {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Dashboard Header -->
+        <div class="dashboard-header">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h1 class="mb-0">
+                            <i class="bi bi-speedometer2"></i> PDF Service Dashboard
+                        </h1>
+                        <p class="mb-0 mt-2">Мониторинг производительности и анализ ошибок</p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div id="systemHealth" class="d-flex align-items-center justify-content-end">
+                            <span class="health-indicator health-healthy"></span>
+                            <span>System Status: <span id="healthText">Loading...</span></span>
+                        </div>
+                        <small class="text-white-50">Последнее обновление: <span id="lastUpdate">--</span></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- Quick Metrics Summary -->
+            <div class="metric-summary">
+                <div class="metric-card">
+                    <div class="metric-value text-primary" id="totalRequests">--</div>
+                    <div class="metric-label">Всего запросов</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value text-success" id="successRate">--</div>
+                    <div class="metric-label">Успешность</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value text-info" id="avgResponseTime">--</div>
+                    <div class="metric-label">Среднее время ответа</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value text-warning" id="totalErrors">--</div>
+                    <div class="metric-label">Ошибки за 24ч</div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" 
+                            type="button" role="tab" aria-controls="overview" aria-selected="true">
+                        <i class="bi bi-house"></i> Обзор
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="statistics-tab" data-bs-toggle="tab" data-bs-target="#statistics" 
+                            type="button" role="tab" aria-controls="statistics" aria-selected="false">
+                        <i class="bi bi-graph-up"></i> Статистика
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="errors-tab" data-bs-toggle="tab" data-bs-target="#errors" 
+                            type="button" role="tab" aria-controls="errors" aria-selected="false">
+                        <i class="bi bi-exclamation-triangle"></i> Ошибки
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="dashboardTabContent">
+                <!-- Overview Tab -->
+                <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Система здоровья компонентов</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="componentHealth">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>Gotenberg</span>
+                                            <span class="health-indicator health-healthy"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>DOCX Generator</span>
+                                            <span class="health-indicator health-healthy"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>Database</span>
+                                            <span class="health-indicator health-healthy"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span>Error Tracking</span>
+                                            <span class="health-indicator health-healthy"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Последние события</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="recentEvents">
+                                        <small class="text-muted">Загрузка последних событий...</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Тренды производительности</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="overviewChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics Tab -->
+                <div class="tab-pane fade" id="statistics" role="tabpanel" aria-labelledby="statistics-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4>Детальная статистика</h4>
+                        <div class="period-selector">
+                            <select class="form-select" id="statsPeriodSelect" onchange="updateStats()">
+                                <option value="15min">За 15 минут</option>
+                                <option value="1hour">За 1 час</option>
+                                <option value="5hours">За 5 часов</option>
+                                <option value="24hours">За 24 часа</option>
+                                <option value="week">За неделю</option>
+                                <option value="month">За месяц</option>
+                                <option value="all" selected>За все время</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Compact Statistics -->
+                    <div id="statsContainer" class="stats-grid"></div>
+
+                    <!-- Main Charts -->
+                    <div class="charts-row">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Запросы по дням недели</h5>
+                                <div class="chart-container">
+                                    <canvas id="weekdayChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Запросы по часам</h5>
+                                <div class="chart-container">
+                                    <canvas id="hourChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status Charts -->
+                    <div class="charts-row-small">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Статус DOCX</h5>
+                                <div class="chart-container">
+                                    <canvas id="docxChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Статус Gotenberg</h5>
+                                <div class="chart-container">
+                                    <canvas id="gotenbergChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Размеры PDF</h5>
+                                <div class="chart-container">
+                                    <canvas id="pdfSizeChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Errors Tab -->
+                <div class="tab-pane fade" id="errors" role="tabpanel" aria-labelledby="errors-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4>
+                            <i class="bi bi-exclamation-triangle"></i> Анализ ошибок
+                        </h4>
+                        <button class="btn btn-primary" onclick="refreshErrorData()">
+                            <i class="bi bi-arrow-clockwise"></i> Обновить
+                        </button>
+                    </div>
+
+                    <!-- Error Filters -->
+                    <div class="card filter-card">
+                        <div class="card-body">
+                            <h5 class="card-title">Фильтры</h5>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <label class="form-label">Период</label>
+                                    <select class="form-select" id="errorPeriodFilter" onchange="refreshErrorData()">
+                                        <option value="1h">Последний час</option>
+                                        <option value="6h">Последние 6 часов</option>
+                                        <option value="24h" selected>Последние 24 часа</option>
+                                        <option value="7d">Последняя неделя</option>
+                                        <option value="30d">Последний месяц</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Тип ошибки</label>
+                                    <select class="form-select" id="errorTypeFilter" onchange="refreshErrorData()">
+                                        <option value="">Все типы</option>
+                                        <option value="timeout">Timeout</option>
+                                        <option value="validation">Validation</option>
+                                        <option value="connection">Connection</option>
+                                        <option value="resource">Resource</option>
+                                        <option value="panic">Panic</option>
+                                        <option value="unknown">Unknown</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Компонент</label>
+                                    <select class="form-select" id="errorComponentFilter" onchange="refreshErrorData()">
+                                        <option value="">Все компоненты</option>
+                                        <option value="gotenberg">Gotenberg</option>
+                                        <option value="docx">DOCX Generator</option>
+                                        <option value="pdf">PDF</option>
+                                        <option value="api">API</option>
+                                        <option value="database">Database</option>
+                                        <option value="system">System</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Серьезность</label>
+                                    <select class="form-select" id="errorSeverityFilter" onchange="refreshErrorData()">
+                                        <option value="">Все уровни</option>
+                                        <option value="critical">Critical</option>
+                                        <option value="high">High</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="low">Low</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error Summary -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="card-title">Всего ошибок</h5>
+                                    <h2 class="text-danger" id="errorTotalErrors">-</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="card-title">За последние 24ч</h5>
+                                    <h2 class="text-warning" id="errorErrors24h">-</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="card-title">За последний час</h5>
+                                    <h2 class="text-info" id="errorErrors1h">-</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Errors -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Последние ошибки</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="errorRecentErrors">
+                                <div class="text-center">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Refresh Button -->
+    <button class="btn btn-primary refresh-button" onclick="refreshAllData()" title="Обновить все данные">
+        <i class="bi bi-arrow-clockwise"></i>
+    </button>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Dashboard Scripts -->
+    <script src="static/js/dashboard.js"></script>
+</body>
+</html>

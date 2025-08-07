@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 
 	"pdf-service-go/internal/api/middleware"
 	"pdf-service-go/internal/domain/pdf"
+	"pdf-service-go/internal/pkg/errortracker"
 	"pdf-service-go/internal/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +46,15 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 			zap.Any("error", err),
 			zap.String("path", c.Request.URL.Path),
 		)
+
+		// Отслеживаем panic как критическую ошибку
+		errortracker.TrackError(c.Request.Context(), fmt.Errorf("panic: %v", err),
+			errortracker.WithComponent("api"),
+			errortracker.WithErrorType("panic"),
+			errortracker.WithSeverity("critical"),
+			errortracker.WithHTTPStatus(http.StatusInternalServerError),
+		)
+
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}))
 
@@ -119,16 +130,48 @@ func (s *Server) SetupRoutes() {
 	// Статистика API
 	s.Router.GET("/api/v1/statistics", s.Handlers.Statistics.GetStatistics)
 
-	// Веб-интерфейс для статистики
+	// API для детальной информации об ошибках
+	s.Router.GET("/api/v1/errors", s.Handlers.Errors.GetErrors)
+	s.Router.GET("/api/v1/errors/stats", s.Handlers.Errors.GetErrorStats)
+	s.Router.GET("/api/v1/errors/:id", s.Handlers.Errors.GetErrorDetails)
+
+	// Единый дашборд
+	s.Router.GET("/dashboard", func(c *gin.Context) {
+		c.File("internal/static/dashboard.html")
+	})
+
+	// Главная страница перенаправляет на дашборд
+	s.Router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusTemporaryRedirect, "/dashboard")
+	})
+
+	// Веб-интерфейс для статистики (сохраняем для обратной совместимости)
 	s.Router.GET("/stats", func(c *gin.Context) {
 		c.File("internal/static/index.html")
+	})
+
+	// Веб-интерфейс для ошибок (сохраняем для обратной совместимости)
+	s.Router.GET("/errors", func(c *gin.Context) {
+		c.File("internal/static/errors.html")
 	})
 
 	// Статические файлы
 	s.Router.Static("/static", "internal/static")
 
-	// Тестовый эндпоинт для проверки логирования ошибок
+	// Тестовые эндпоинты для проверки логирования ошибок
 	s.Router.GET("/test-error", func(c *gin.Context) {
+		err := fmt.Errorf("test error for debugging")
+
+		// Тестируем новую систему отслеживания ошибок
+		errortracker.TrackError(c.Request.Context(), err,
+			errortracker.WithComponent("api"),
+			errortracker.WithErrorType("validation"),
+			errortracker.WithSeverity("medium"),
+			errortracker.WithHTTPStatus(http.StatusInternalServerError),
+			errortracker.WithRequestDetails("test_mode", true),
+			errortracker.WithRequestDetails("endpoint", "test-error"),
+		)
+
 		logger.Error("Test error endpoint called",
 			zap.String("test_field", "test_value"),
 			zap.Int("error_code", 500),
@@ -136,6 +179,23 @@ func (s *Server) SetupRoutes() {
 		c.Header("Content-Type", "application/json; charset=utf-8")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Test error message",
+		})
+	})
+
+	s.Router.GET("/test-timeout", func(c *gin.Context) {
+		err := fmt.Errorf("context deadline exceeded (Client.Timeout exceeded while awaiting headers)")
+
+		errortracker.TrackError(c.Request.Context(), err,
+			errortracker.WithComponent("gotenberg"),
+			errortracker.WithErrorType("timeout"),
+			errortracker.WithSeverity("high"),
+			errortracker.WithHTTPStatus(http.StatusGatewayTimeout),
+			errortracker.WithDuration(30*time.Second),
+			errortracker.WithRequestDetails("pages", 5),
+		)
+
+		c.JSON(http.StatusGatewayTimeout, gin.H{
+			"error": "Test timeout error",
 		})
 	})
 
@@ -156,8 +216,12 @@ func (s *Server) SetupRoutes() {
 		logger.Field("health_endpoint", "/health"),
 		logger.Field("metrics_endpoint", "/metrics"),
 		logger.Field("statistics_endpoint", "/api/v1/statistics"),
+		logger.Field("dashboard_ui", "/dashboard"),
+		logger.Field("home_redirect", "/"),
 		logger.Field("statistics_ui", "/stats"),
-		logger.Field("test_endpoint", "/test-error"),
+		logger.Field("errors_api", "/api/v1/errors"),
+		logger.Field("errors_ui", "/errors"),
+		logger.Field("test_endpoints", []string{"/test-error", "/test-timeout"}),
 		logger.Field("api_endpoints", []string{"/api/v1/docx", "/generate-pdf"}),
 	)
 }
