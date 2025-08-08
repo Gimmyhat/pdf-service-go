@@ -123,23 +123,16 @@ func (p *PostgresDB) GetRequestDetailsByError(limit int, since time.Time) ([]Req
     for rows.Next() {
         var detail RequestDetail
 
-		err := rows.Scan(
-			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-			&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
-			&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-			&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-			&detail.HasSensitiveData, &detail.ErrorCategory,
-			&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-		)
+        err := rows.Scan(
+            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+            &detail.Path, &detail.ClientIP, &detail.UserAgent,
+            &detail.BodySizeBytes, &detail.Success,
+            &detail.HTTPStatus, &detail.DurationNs,
+            &detail.ErrorCategory,
+            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+        )
 		if err != nil {
 			return nil, err
-		}
-
-		if len(headersJSON) > 0 {
-			if err := json.Unmarshal(headersJSON, &detail.Headers); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal headers: %w", err)
-			}
 		}
 
         details = append(details, detail)
