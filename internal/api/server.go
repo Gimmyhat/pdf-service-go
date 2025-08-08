@@ -17,8 +17,8 @@ import (
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gin-contrib/gzip"
+	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )

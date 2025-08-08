@@ -147,14 +147,15 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 			if len(cached) > limit {
 				cached = cached[:limit]
 			}
-            // Тайминги кэш-хита в заголовках
+			// Тайминги кэш-хита в заголовках
             c.Header("X-Archive-Cached", "true")
-            c.Header("X-Archive-Cache-Age-ms", strconv.FormatInt(time.Since(h.recentAt).Milliseconds(), 10))
-            c.JSON(http.StatusOK, gin.H{
+			c.Header("X-Archive-Cache-Age-ms", strconv.FormatInt(time.Since(h.recentAt).Milliseconds(), 10))
+            c.Header("Cache-Control", "private, max-age=10")
+			c.JSON(http.StatusOK, gin.H{
 				"recent_requests": cached,
 				"total":           len(cached),
 				"cached":          true,
-                "cache_age_ms":    time.Since(h.recentAt).Milliseconds(),
+				"cache_age_ms":    time.Since(h.recentAt).Milliseconds(),
 			})
 			return
 		}
@@ -165,8 +166,8 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-    // Быстрый SQL без тяжёлых полей; используем контекст
-    start := time.Now()
+	// Быстрый SQL без тяжёлых полей; используем контекст
+	start := time.Now()
 	details, err := h.db.GetRecentRequestsCtx(ctx, limit)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
@@ -209,11 +210,12 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 		h.cacheMu.Unlock()
 	}
 
-    // Тайминги в заголовках для диагностики
+	// Тайминги в заголовках для диагностики
     c.Header("X-Archive-DB-ms", strconv.FormatInt(time.Since(start).Milliseconds(), 10))
     c.Header("X-Archive-Cached", "false")
+    c.Header("Cache-Control", "private, max-age=10")
 
-    c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"recent_requests": details,
 		"total":           len(details),
 		"cached":          false,
