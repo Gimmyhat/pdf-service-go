@@ -50,6 +50,9 @@ POSTGRES_PASSWORD=pdf_service_pass
 # Monitoring
 PROMETHEUS_URL=http://nas-pdf-service-prometheus:9090
 JAEGER_ENDPOINT=http://nas-jaeger:14268/api/traces
+
+# Service timeouts
+REQUEST_TIMEOUT=180s
 ```
 
 ### Docker Registry Configuration
