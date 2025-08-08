@@ -73,8 +73,7 @@ func (p *PostgresDB) GetRequestDetail(requestID string) (*RequestDetail, error) 
 		WHERE request_id = $1
 	`
 
-	var detail RequestDetail
-	var headersJSON []byte
+        var detail RequestDetail
 
 	err := p.db.QueryRow(query, requestID).Scan(
 		&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
@@ -217,8 +216,8 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-    // Лёгкая выборка без тяжёлых полей (headers, body_text, content_type и т.п.)
-    query := `
+	// Лёгкая выборка без тяжёлых полей (headers, body_text, content_type и т.п.)
+	query := `
         SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
             body_size_bytes, success, http_status, duration_ns,
@@ -240,13 +239,13 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 		var detail RequestDetail
 		var headersJSON []byte
 
-        // Сканируем только необходимые столбцы
-        err := rows.Scan(
-            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-            &detail.Path, &detail.ClientIP, &detail.UserAgent,
-            &detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
-            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-        )
+		// Сканируем только необходимые столбцы
+		err := rows.Scan(
+			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+			&detail.Path, &detail.ClientIP, &detail.UserAgent,
+			&detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
+			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+		)
 		if err != nil {
 			return nil, err
 		}
