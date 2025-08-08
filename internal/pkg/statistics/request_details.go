@@ -3,7 +3,7 @@ package statistics
 import (
 	"encoding/json"
 	"fmt"
-    "os"
+	"os"
 	"time"
 )
 
@@ -16,7 +16,7 @@ func (p *PostgresDB) SaveRequestDetail(detail *RequestDetail) error {
 		return fmt.Errorf("failed to marshal headers: %w", err)
 	}
 
-    query := `
+	query := `
         INSERT INTO request_details (
             request_id, timestamp, method, path, client_ip, user_agent,
             headers, body_text, body_size_bytes, success, http_status, duration_ns,
@@ -37,13 +37,13 @@ func (p *PostgresDB) SaveRequestDetail(detail *RequestDetail) error {
             result_size_bytes = COALESCE(EXCLUDED.result_size_bytes, request_details.result_size_bytes)
     `
 
-    _, err = p.db.Exec(query,
+	_, err = p.db.Exec(query,
 		detail.RequestID, detail.Timestamp, detail.Method, detail.Path,
 		detail.ClientIP, detail.UserAgent, headersJSON, detail.BodyText,
 		detail.BodySizeBytes, detail.Success, detail.HTTPStatus, detail.DurationNs,
-        detail.ContentType, detail.HasSensitiveData, detail.ErrorCategory,
-        detail.RequestLogID, detail.DocxLogID, detail.GotenbergLogID,
-        detail.RequestFilePath, detail.ResultFilePath, detail.ResultSizeBytes,
+		detail.ContentType, detail.HasSensitiveData, detail.ErrorCategory,
+		detail.RequestLogID, detail.DocxLogID, detail.GotenbergLogID,
+		detail.RequestFilePath, detail.ResultFilePath, detail.ResultSizeBytes,
 	)
 
 	return err
@@ -51,13 +51,13 @@ func (p *PostgresDB) SaveRequestDetail(detail *RequestDetail) error {
 
 // UpdateResultFileInfo обновляет путь и размер результата для запроса
 func (p *PostgresDB) UpdateResultFileInfo(requestID string, resultPath string, resultSize int64) error {
-    query := `
+	query := `
         UPDATE request_details
         SET result_file_path = $1, result_size_bytes = $2
         WHERE request_id = $3
     `
-    _, err := p.db.Exec(query, resultPath, resultSize, requestID)
-    return err
+	_, err := p.db.Exec(query, resultPath, resultSize, requestID)
+	return err
 }
 
 // GetRequestDetail получает детальную информацию о запросе по request_id
@@ -76,14 +76,14 @@ func (p *PostgresDB) GetRequestDetail(requestID string) (*RequestDetail, error) 
 	var detail RequestDetail
 	var headersJSON []byte
 
-    err := p.db.QueryRow(query, requestID).Scan(
+	err := p.db.QueryRow(query, requestID).Scan(
 		&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
 		&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
 		&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-        &detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-        &detail.HasSensitiveData, &detail.ErrorCategory,
-        &detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-        &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+		&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
+		&detail.HasSensitiveData, &detail.ErrorCategory,
+		&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
+		&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
 	)
 
 	if err != nil {
@@ -125,14 +125,14 @@ func (p *PostgresDB) GetRequestDetailsByError(limit int, since time.Time) ([]Req
 		var detail RequestDetail
 		var headersJSON []byte
 
-        err := rows.Scan(
+		err := rows.Scan(
 			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
 			&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
 			&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-            &detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-            &detail.HasSensitiveData, &detail.ErrorCategory,
-            &detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+			&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
+			&detail.HasSensitiveData, &detail.ErrorCategory,
+			&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
+			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
 		)
 		if err != nil {
 			return nil, err
@@ -187,14 +187,14 @@ func (p *PostgresDB) GetRequestDetailsByPattern(errorCategory string, limit int,
 		var detail RequestDetail
 		var headersJSON []byte
 
-        err := rows.Scan(
+		err := rows.Scan(
 			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
 			&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
 			&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-            &detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-            &detail.HasSensitiveData, &detail.ErrorCategory,
-            &detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+			&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
+			&detail.HasSensitiveData, &detail.ErrorCategory,
+			&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
+			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
 		)
 		if err != nil {
 			return nil, err
@@ -214,10 +214,10 @@ func (p *PostgresDB) GetRequestDetailsByPattern(errorCategory string, limit int,
 
 // GetRecentRequests возвращает последние запросы (успешные и с ошибками)
 func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
-    if limit <= 0 || limit > 1000 {
-        limit = 100
-    }
-    query := `
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	query := `
         SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
             headers, body_text, body_size_bytes, success, http_status, duration_ns,
@@ -229,83 +229,83 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
         LIMIT $1
     `
 
-    rows, err := p.db.Query(query, limit)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	rows, err := p.db.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    var details []RequestDetail
-    for rows.Next() {
-        var detail RequestDetail
-        var headersJSON []byte
+	var details []RequestDetail
+	for rows.Next() {
+		var detail RequestDetail
+		var headersJSON []byte
 
-        err := rows.Scan(
-            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-            &detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
-            &detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-            &detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-            &detail.HasSensitiveData, &detail.ErrorCategory,
-            &detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-        )
-        if err != nil {
-            return nil, err
-        }
+		err := rows.Scan(
+			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+			&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
+			&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
+			&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
+			&detail.HasSensitiveData, &detail.ErrorCategory,
+			&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
+			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+		)
+		if err != nil {
+			return nil, err
+		}
 
-        if len(headersJSON) > 0 {
-            if err := json.Unmarshal(headersJSON, &detail.Headers); err != nil {
-                return nil, fmt.Errorf("failed to unmarshal headers: %w", err)
-            }
-        }
+		if len(headersJSON) > 0 {
+			if err := json.Unmarshal(headersJSON, &detail.Headers); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal headers: %w", err)
+			}
+		}
 
-        details = append(details, detail)
-    }
+		details = append(details, detail)
+	}
 
-    return details, nil
+	return details, nil
 }
 
 // CleanupOldRequestArtifactsKeepLast удаляет записи и файлы, оставляя только последние keep записей
 func (p *PostgresDB) CleanupOldRequestArtifactsKeepLast(keep int) error {
-    if keep <= 0 {
-        keep = 100
-    }
-    // Находим пороговую метку времени (timestamp) на позиции keep
-    var cutoff time.Time
-    err := p.db.QueryRow(`SELECT timestamp FROM request_details ORDER BY timestamp DESC OFFSET $1 LIMIT 1`, keep).Scan(&cutoff)
-    if err != nil {
-        // Если записей меньше keep, просто выходим без ошибки
-        return nil
-    }
+	if keep <= 0 {
+		keep = 100
+	}
+	// Находим пороговую метку времени (timestamp) на позиции keep
+	var cutoff time.Time
+	err := p.db.QueryRow(`SELECT timestamp FROM request_details ORDER BY timestamp DESC OFFSET $1 LIMIT 1`, keep).Scan(&cutoff)
+	if err != nil {
+		// Если записей меньше keep, просто выходим без ошибки
+		return nil
+	}
 
-    // Получаем пути файлов для удаления
-    rows, err := p.db.Query(`SELECT request_file_path, result_file_path FROM request_details WHERE timestamp < $1`, cutoff)
-    if err != nil {
-        return err
-    }
-    defer rows.Close()
+	// Получаем пути файлов для удаления
+	rows, err := p.db.Query(`SELECT request_file_path, result_file_path FROM request_details WHERE timestamp < $1`, cutoff)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-    var reqPaths []string
-    var resPaths []string
-    for rows.Next() {
-        var reqPath, resPath *string
-        if err := rows.Scan(&reqPath, &resPath); err != nil {
-            return err
-        }
-        if reqPath != nil && *reqPath != "" {
-            reqPaths = append(reqPaths, *reqPath)
-        }
-        if resPath != nil && *resPath != "" {
-            resPaths = append(resPaths, *resPath)
-        }
-    }
+	var reqPaths []string
+	var resPaths []string
+	for rows.Next() {
+		var reqPath, resPath *string
+		if err := rows.Scan(&reqPath, &resPath); err != nil {
+			return err
+		}
+		if reqPath != nil && *reqPath != "" {
+			reqPaths = append(reqPaths, *reqPath)
+		}
+		if resPath != nil && *resPath != "" {
+			resPaths = append(resPaths, *resPath)
+		}
+	}
 
-    // Удаляем файлы на диске (игнорируем ошибки удаления)
-    for _, pth := range append(reqPaths, resPaths...) {
-        _ = os.Remove(pth)
-    }
+	// Удаляем файлы на диске (игнорируем ошибки удаления)
+	for _, pth := range append(reqPaths, resPaths...) {
+		_ = os.Remove(pth)
+	}
 
-    // Удаляем старые записи
-    _, err = p.db.Exec(`DELETE FROM request_details WHERE timestamp < $1`, cutoff)
-    return err
+	// Удаляем старые записи
+	_, err = p.db.Exec(`DELETE FROM request_details WHERE timestamp < $1`, cutoff)
+	return err
 }

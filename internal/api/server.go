@@ -67,8 +67,8 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 		ExcludePaths:      []string{"/health", "/metrics", "/favicon.ico"},
 		ExcludeHeaders:    []string{"authorization", "cookie", "x-api-key"},
 		RetentionDays:     7,
-        MaskSensitiveData: true,
-        KeepLast:          100,
+		MaskSensitiveData: true,
+		KeepLast:          100,
 	}
 
 	db := statistics.GetPostgresDB()
@@ -158,8 +158,8 @@ func (s *Server) SetupRoutes() {
 	s.Router.GET("/api/v1/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
 	s.Router.GET("/api/v1/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
 	s.Router.GET("/api/v1/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
-    s.Router.GET("/api/v1/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
-    s.Router.POST("/api/v1/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
+	s.Router.GET("/api/v1/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
+	s.Router.POST("/api/v1/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
 
 	// Единый дашборд
 	s.Router.GET("/dashboard", func(c *gin.Context) {
@@ -182,9 +182,9 @@ func (s *Server) SetupRoutes() {
 	})
 
 	// Статические файлы
-    s.Router.Static("/static", "internal/static")
-    // Раздача артефактов (запросов и результатов)
-    s.Router.Static("/files", "/app/data/artifacts")
+	s.Router.Static("/static", "internal/static")
+	// Раздача артефактов (запросов и результатов)
+	s.Router.Static("/files", "/app/data/artifacts")
 
 	// Тестовые эндпоинты для проверки логирования ошибок
 	s.Router.GET("/test-error", func(c *gin.Context) {

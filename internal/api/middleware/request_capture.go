@@ -6,9 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-    "os"
-    "path/filepath"
 	"net/http"
+	"os"
+	"path/filepath"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
 	"regexp"
@@ -39,7 +39,7 @@ func RequestCaptureMiddleware(db *statistics.PostgresDB, config statistics.Reque
 		requestID := generateRequestID()
 		c.Set("request_id", requestID)
 
-        // Захватываем данные запроса
+		// Захватываем данные запроса
 		capture := &statistics.RequestCapture{
 			RequestID:   requestID,
 			Method:      c.Request.Method,
@@ -61,21 +61,21 @@ func RequestCaptureMiddleware(db *statistics.PostgresDB, config statistics.Reque
 			}
 		}
 
-        // Выполняем обработку запроса
+		// Выполняем обработку запроса
 		c.Next()
 
 		// Сохраняем детальную информацию только если включен захват
 		if config.EnableCapture {
-            go func() {
-                // Перед сохранением пробуем сохранить тело запроса в файл
-                if len(capture.Body) > 0 {
-                    if path, err := saveRequestBodyToFile(capture.RequestID, capture.Body); err == nil {
-                        // Путь установим в контекст, дальнейшее обновление сделаем в saveRequestDetail
-                        c.Set("request_body_file_path", path)
-                    }
-                }
-                saveRequestDetail(db, capture, c, sensitivePatterns, config)
-            }()
+			go func() {
+				// Перед сохранением пробуем сохранить тело запроса в файл
+				if len(capture.Body) > 0 {
+					if path, err := saveRequestBodyToFile(capture.RequestID, capture.Body); err == nil {
+						// Путь установим в контекст, дальнейшее обновление сделаем в saveRequestDetail
+						c.Set("request_body_file_path", path)
+					}
+				}
+				saveRequestDetail(db, capture, c, sensitivePatterns, config)
+			}()
 		}
 	}
 }
@@ -214,15 +214,15 @@ func saveRequestDetail(db *statistics.PostgresDB, capture *statistics.RequestCap
 	}
 
 	// Создаем запись для сохранения
-    // Попробуем получить пути к файлам из контекста (если сохранены)
-    var requestFilePathPtr *string
-    if v, exists := c.Get("request_body_file_path"); exists {
-        if s, ok := v.(string); ok && s != "" {
-            requestFilePathPtr = &s
-        }
-    }
+	// Попробуем получить пути к файлам из контекста (если сохранены)
+	var requestFilePathPtr *string
+	if v, exists := c.Get("request_body_file_path"); exists {
+		if s, ok := v.(string); ok && s != "" {
+			requestFilePathPtr = &s
+		}
+	}
 
-    detail := &statistics.RequestDetail{
+	detail := &statistics.RequestDetail{
 		RequestID:        capture.RequestID,
 		Timestamp:        capture.StartTime,
 		Method:           capture.Method,
@@ -238,7 +238,7 @@ func saveRequestDetail(db *statistics.PostgresDB, capture *statistics.RequestCap
 		ContentType:      capture.ContentType,
 		HasSensitiveData: hasSensitiveData,
 		ErrorCategory:    errorCategory,
-        RequestFilePath:  requestFilePathPtr,
+		RequestFilePath:  requestFilePathPtr,
 	}
 
 	// Сохраняем в базу данных
@@ -251,24 +251,24 @@ func saveRequestDetail(db *statistics.PostgresDB, capture *statistics.RequestCap
 
 // saveRequestBodyToFile сохраняет тело запроса на диск и возвращает путь к файлу
 func saveRequestBodyToFile(requestID string, body []byte) (string, error) {
-    baseDir := getArtifactsBaseDir()
-    reqDir := filepath.Join(baseDir, "requests")
-    if err := os.MkdirAll(reqDir, 0o755); err != nil {
-        return "", err
-    }
-    filename := filepath.Join(reqDir, fmt.Sprintf("%s.json", requestID))
-    if err := os.WriteFile(filename, body, 0o644); err != nil {
-        return "", err
-    }
-    return filename, nil
+	baseDir := getArtifactsBaseDir()
+	reqDir := filepath.Join(baseDir, "requests")
+	if err := os.MkdirAll(reqDir, 0o755); err != nil {
+		return "", err
+	}
+	filename := filepath.Join(reqDir, fmt.Sprintf("%s.json", requestID))
+	if err := os.WriteFile(filename, body, 0o644); err != nil {
+		return "", err
+	}
+	return filename, nil
 }
 
 // getArtifactsBaseDir возвращает базовую директорию для артефактов
 func getArtifactsBaseDir() string {
-    if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
-        return v
-    }
-    return "/app/data/artifacts"
+	if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
+		return v
+	}
+	return "/app/data/artifacts"
 }
 
 // categorizeError определяет категорию ошибки

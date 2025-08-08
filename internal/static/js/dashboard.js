@@ -62,6 +62,9 @@ function refreshAllData() {
         case '#errors':
             refreshErrorData();
             break;
+        case '#archive':
+            refreshArchive();
+            break;
         case '#overview':
         default:
             updateOverview();
@@ -1098,3 +1101,64 @@ window.refreshErrorData = refreshErrorData;
 window.openJaegerTrace = openJaegerTrace;
 window.showRequestBody = showRequestBody;
 window.showRequestBodyFromApi = showRequestBodyFromApi;
+
+// ===== Архив запросов =====
+async function refreshArchive() {
+    try {
+        const limit = document.getElementById('archiveLimit')?.value || '100';
+        const resp = await fetch(`/api/v1/requests/recent?limit=${limit}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        renderArchiveTable(data.recent_requests || []);
+    } catch (e) {
+        console.error('Error loading archive:', e);
+        const tbody = document.querySelector('#archiveTable tbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Ошибка загрузки архива</td></tr>`;
+    }
+}
+
+function renderArchiveTable(items) {
+    const tbody = document.querySelector('#archiveTable tbody');
+    if (!tbody) return;
+    if (!items || items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">Нет данных</td></tr>`;
+        return;
+    }
+    const rows = items.map(it => {
+        const ts = new Date(it.timestamp).toLocaleString('ru');
+        const dur = it.duration_ns ? (it.duration_ns / 1e6).toFixed(1) + 'ms' : '';
+        const bodySize = typeof it.body_size_bytes === 'number' ? formatBytes(it.body_size_bytes) : '';
+        const statusBadge = it.success ? '<span class="badge bg-success">OK</span>' : `<span class="badge bg-danger">${it.http_status || 'ERR'}</span>`;
+        const reqLink = it.request_file_path ? `<a href="${it.request_file_path}" target="_blank">json</a>` : '';
+        const resLink = it.result_file_path ? `<a href="${it.result_file_path}" target="_blank">pdf</a>${it.result_size_bytes ? ` <small class="text-muted">(${formatBytes(it.result_size_bytes)})</small>` : ''}` : '';
+        const viewBtn = it.request_id ? `<button class="btn btn-sm btn-outline-primary" onclick="showRequestBodyFromApi('${it.request_id}')"><i class="bi bi-eye"></i></button>` : '';
+        return `<tr>
+            <td>${ts}</td>
+            <td>${it.method}</td>
+            <td><code>${it.path}</code></td>
+            <td>${statusBadge}</td>
+            <td>${dur}</td>
+            <td>${bodySize}</td>
+            <td>${reqLink}</td>
+            <td>${resLink}</td>
+            <td class="text-end">${viewBtn}</td>
+        </tr>`;
+    }).join('');
+    tbody.innerHTML = rows;
+}
+
+async function cleanupArchive() {
+    try {
+        const keep = 100;
+        const resp = await fetch(`/api/v1/requests/cleanup?keep=${keep}`, { method: 'POST' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        await refreshArchive();
+        alert('Очистка выполнена');
+    } catch (e) {
+        console.error('Cleanup error:', e);
+        alert('Ошибка очистки');
+    }
+}
+
+window.refreshArchive = refreshArchive;
+window.cleanupArchive = cleanupArchive;

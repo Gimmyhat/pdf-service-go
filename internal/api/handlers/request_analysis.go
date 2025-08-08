@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
 	"strconv"
-    "os"
-    "strings"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -124,72 +124,73 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 
 // GetRecentRequests возвращает последние запросы (успешные и с ошибками)
 func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
-    limitStr := c.DefaultQuery("limit", "100")
-    limit, err := strconv.Atoi(limitStr)
-    if err != nil || limit <= 0 || limit > 1000 {
-        limit = 100
-    }
+	limitStr := c.DefaultQuery("limit", "100")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 || limit > 1000 {
+		limit = 100
+	}
 
-    details, err := h.db.GetRecentRequests(limit)
-    if err != nil {
-        logger.Error("Failed to get recent requests", zap.Error(err))
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
-        return
-    }
+	details, err := h.db.GetRecentRequests(limit)
+	if err != nil {
+		logger.Error("Failed to get recent requests", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
+		return
+	}
 
-    // Преобразуем абсолютные пути к публичным URL через /files
-    baseDir := getArtifactsBaseDir()
-    makePublic := func(p *string) *string {
-        if p == nil || *p == "" {
-            return p
-        }
-        path := *p
-        // На Windows могут быть обратные слеши — нормализуем
-        path = strings.ReplaceAll(path, "\\", "/")
-        b := strings.ReplaceAll(baseDir, "\\", "/")
-        if strings.HasPrefix(path, b) {
-            rel := strings.TrimPrefix(path, b)
-            if !strings.HasPrefix(rel, "/") {
-                rel = "/" + rel
-            }
-            url := "/files" + rel
-            return &url
-        }
-        return p
-    }
+	// Преобразуем абсолютные пути к публичным URL через /files
+	baseDir := getArtifactsBaseDir()
+	makePublic := func(p *string) *string {
+		if p == nil || *p == "" {
+			return p
+		}
+		path := *p
+		// На Windows могут быть обратные слеши — нормализуем
+		path = strings.ReplaceAll(path, "\\", "/")
+		b := strings.ReplaceAll(baseDir, "\\", "/")
+		if strings.HasPrefix(path, b) {
+			rel := strings.TrimPrefix(path, b)
+			if !strings.HasPrefix(rel, "/") {
+				rel = "/" + rel
+			}
+			url := "/files" + rel
+			return &url
+		}
+		return p
+	}
 
-    for i := range details {
-        details[i].RequestFilePath = makePublic(details[i].RequestFilePath)
-        details[i].ResultFilePath = makePublic(details[i].ResultFilePath)
-    }
+	for i := range details {
+		details[i].RequestFilePath = makePublic(details[i].RequestFilePath)
+		details[i].ResultFilePath = makePublic(details[i].ResultFilePath)
+	}
 
-    c.JSON(http.StatusOK, gin.H{
-        "recent_requests": details,
-        "total":           len(details),
-    })
+	c.JSON(http.StatusOK, gin.H{
+		"recent_requests": details,
+		"total":           len(details),
+	})
 }
 
 // CleanupRequests запускает очистку артефактов, оставляя только последние keep записей
 func (h *RequestAnalysisHandler) CleanupRequests(c *gin.Context) {
-    keepStr := c.DefaultQuery("keep", "100")
-    keep, err := strconv.Atoi(keepStr)
-    if err != nil || keep <= 0 {
-        keep = 100
-    }
-    if err := h.db.CleanupOldRequestArtifactsKeepLast(keep); err != nil {
-        logger.Error("Failed to cleanup request artifacts", zap.Error(err))
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Cleanup failed"})
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"status": "ok", "kept": keep})
+	keepStr := c.DefaultQuery("keep", "100")
+	keep, err := strconv.Atoi(keepStr)
+	if err != nil || keep <= 0 {
+		keep = 100
+	}
+	if err := h.db.CleanupOldRequestArtifactsKeepLast(keep); err != nil {
+		logger.Error("Failed to cleanup request artifacts", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cleanup failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "kept": keep})
 }
 
 func getArtifactsBaseDir() string {
-    if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
-        return v
-    }
-    return "/app/data/artifacts"
+	if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
+		return v
+	}
+	return "/app/data/artifacts"
 }
+
 // GetRequestBody возвращает тело конкретного запроса
 func (h *RequestAnalysisHandler) GetRequestBody(c *gin.Context) {
 	requestID := c.Param("request_id")
