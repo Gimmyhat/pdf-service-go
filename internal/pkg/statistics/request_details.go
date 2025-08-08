@@ -101,18 +101,17 @@ func (p *PostgresDB) GetRequestDetail(requestID string) (*RequestDetail, error) 
 
 // GetRequestDetailsByError получает детальную информацию о запросах с ошибками
 func (p *PostgresDB) GetRequestDetailsByError(limit int, since time.Time) ([]RequestDetail, error) {
-	query := `
-		SELECT 
+    query := `
+        SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
-            headers, body_text, body_size_bytes, success, http_status, duration_ns,
-            content_type, has_sensitive_data, error_category,
-            request_log_id, docx_log_id, gotenberg_log_id,
+            body_size_bytes, success, http_status, duration_ns,
+            error_category,
             request_file_path, result_file_path, result_size_bytes
-		FROM request_details
-		WHERE success = false AND timestamp >= $1
-		ORDER BY timestamp DESC
-		LIMIT $2
-	`
+        FROM request_details
+        WHERE success = false AND timestamp >= $1
+        ORDER BY timestamp DESC
+        LIMIT $2
+    `
 
 	rows, err := p.db.Query(query, since.UTC(), limit)
 	if err != nil {
@@ -183,26 +182,18 @@ func (p *PostgresDB) GetRequestDetailsByPattern(errorCategory string, limit int,
 
 	var details []RequestDetail
 	for rows.Next() {
-		var detail RequestDetail
-		var headersJSON []byte
+        var detail RequestDetail
 
-		err := rows.Scan(
-			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-			&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
-			&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-			&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-			&detail.HasSensitiveData, &detail.ErrorCategory,
-			&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-		)
+        err := rows.Scan(
+            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+            &detail.Path, &detail.ClientIP, &detail.UserAgent,
+            &detail.BodySizeBytes, &detail.Success,
+            &detail.HTTPStatus, &detail.DurationNs,
+            &detail.ErrorCategory,
+            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+        )
 		if err != nil {
 			return nil, err
-		}
-
-		if len(headersJSON) > 0 {
-			if err := json.Unmarshal(headersJSON, &detail.Headers); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal headers: %w", err)
-			}
 		}
 
 		details = append(details, detail)
@@ -235,12 +226,11 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	defer rows.Close()
 
 	var details []RequestDetail
-	for rows.Next() {
-		var detail RequestDetail
-		var headersJSON []byte
+    for rows.Next() {
+        var detail RequestDetail
 
 		// Сканируем только необходимые столбцы
-		err := rows.Scan(
+        err := rows.Scan(
 			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
 			&detail.Path, &detail.ClientIP, &detail.UserAgent,
 			&detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
