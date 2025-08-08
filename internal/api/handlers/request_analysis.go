@@ -7,7 +7,7 @@ import (
 	"pdf-service-go/internal/pkg/statistics"
 	"strconv"
 	"strings"
-	"sync"
+
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,11 +16,6 @@ import (
 
 type RequestAnalysisHandler struct {
 	db *statistics.PostgresDB
-
-	// Короткий кеш для /requests/recent
-	cacheMu    sync.RWMutex
-	recentData []statistics.RequestDetail
-	recentAt   time.Time
 }
 
 func NewRequestAnalysisHandler(db *statistics.PostgresDB) *RequestAnalysisHandler {
@@ -128,47 +123,38 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// GetRecentRequests возвращает последние запросы (успешные и с ошибками)
+// GetRecentRequests возвращает последние запросы с автоочисткой и пагинацией
 func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
-	limitStr := c.DefaultQuery("limit", "100")
+	limitStr := c.DefaultQuery("limit", "25")
+	offsetStr := c.DefaultQuery("offset", "0")
+	
 	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 || limit > 1000 {
-		limit = 100
+	if err != nil || limit <= 0 || limit > 200 {
+		limit = 25
+	}
+	
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
 	}
 
-	// Лёгкий кеш на 10 секунд (отключается параметром nocache=1)
-	if c.DefaultQuery("nocache", "0") != "1" {
-		h.cacheMu.RLock()
-		if time.Since(h.recentAt) <= 10*time.Second && h.recentData != nil {
-			cached := make([]statistics.RequestDetail, len(h.recentData))
-			copy(cached, h.recentData)
-			h.cacheMu.RUnlock()
-			// Обрежем до запрошенного лимита, если нужно
-			if len(cached) > limit {
-				cached = cached[:limit]
-			}
-			// Тайминги кэш-хита в заголовках
-            c.Header("X-Archive-Cached", "true")
-			c.Header("X-Archive-Cache-Age-ms", strconv.FormatInt(time.Since(h.recentAt).Milliseconds(), 10))
-            c.Header("Cache-Control", "private, max-age=10")
-			c.JSON(http.StatusOK, gin.H{
-				"recent_requests": cached,
-				"total":           len(cached),
-				"cached":          true,
-				"cache_age_ms":    time.Since(h.recentAt).Milliseconds(),
-			})
-			return
+	// Автоочистка при первом запросе (offset=0) для поддержания производительности
+	if offset == 0 && c.DefaultQuery("skip_cleanup", "0") != "1" {
+		cleanupStart := time.Now()
+		if err := h.db.CleanupOldRequestArtifactsKeepLast(100); err != nil {
+			logger.Warn("Auto-cleanup failed", zap.Error(err))
+		} else {
+			logger.Info("Auto-cleanup completed", zap.Duration("duration", time.Since(cleanupStart)))
 		}
-		h.cacheMu.RUnlock()
 	}
 
-	// Добавим явный 5s таймаут на этот запрос (дублирует middleware, но безопасно)
+	// Добавим явный 5s таймаут на этот запрос
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Быстрый SQL без тяжёлых полей; используем контекст
+	// Быстрый SQL с пагинацией; используем контекст
 	start := time.Now()
-	details, err := h.db.GetRecentRequestsCtx(ctx, limit)
+	details, totalCount, err := h.db.GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
@@ -201,24 +187,18 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 		details[i].ResultFilePath = makePublic(details[i].ResultFilePath)
 	}
 
-	// Обновим кеш
-	if c.DefaultQuery("nocache", "0") != "1" {
-		h.cacheMu.Lock()
-		h.recentData = make([]statistics.RequestDetail, len(details))
-		copy(h.recentData, details)
-		h.recentAt = time.Now()
-		h.cacheMu.Unlock()
-	}
-
 	// Тайминги в заголовках для диагностики
-    c.Header("X-Archive-DB-ms", strconv.FormatInt(time.Since(start).Milliseconds(), 10))
-    c.Header("X-Archive-Cached", "false")
-    c.Header("Cache-Control", "private, max-age=10")
-
+	c.Header("X-Archive-DB-ms", strconv.FormatInt(time.Since(start).Milliseconds(), 10))
+	c.Header("X-Archive-Cached", "false")
+	c.Header("Cache-Control", "private, max-age=5")
+	
 	c.JSON(http.StatusOK, gin.H{
 		"recent_requests": details,
 		"total":           len(details),
-		"cached":          false,
+		"total_count":     totalCount,
+		"offset":          offset,
+		"limit":           limit,
+		"has_more":        offset+len(details) < totalCount,
 	})
 }
 

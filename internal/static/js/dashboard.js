@@ -1104,18 +1104,78 @@ window.showRequestBody = showRequestBody;
 window.showRequestBodyFromApi = showRequestBodyFromApi;
 
 // ===== Архив запросов =====
-async function refreshArchive() {
+let archiveData = {
+    items: [],
+    totalCount: 0,
+    offset: 0,
+    limit: 25,
+    hasMore: false
+};
+
+async function refreshArchive(append = false) {
     try {
-        const limit = document.getElementById('archiveLimit')?.value || '100';
-        const resp = await fetch(`/api/v1/requests/recent?limit=${limit}`);
+        if (!append) {
+            archiveData.offset = 0;
+            archiveData.items = [];
+        }
+        
+        const limit = document.getElementById('archiveLimit')?.value || '25';
+        archiveData.limit = parseInt(limit);
+        
+        const resp = await fetch(`/api/v1/requests/recent?limit=${archiveData.limit}&offset=${archiveData.offset}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        renderArchiveTable(data.recent_requests || []);
+        
+        if (append) {
+            archiveData.items.push(...(data.recent_requests || []));
+        } else {
+            archiveData.items = data.recent_requests || [];
+        }
+        
+        archiveData.totalCount = data.total_count || 0;
+        archiveData.hasMore = data.has_more || false;
+        archiveData.offset = data.offset + data.recent_requests.length;
+        
+        renderArchiveTable(archiveData.items);
+        updateArchivePagination();
+        
     } catch (e) {
         console.error('Error loading archive:', e);
         const tbody = document.querySelector('#archiveTable tbody');
         if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Ошибка загрузки архива</td></tr>`;
     }
+}
+
+function updateArchivePagination() {
+    let paginationHtml = '';
+    if (archiveData.hasMore) {
+        paginationHtml = `
+            <div class="text-center mt-3">
+                <button class="btn btn-outline-primary" onclick="loadMoreArchive()">
+                    <i class="bi bi-arrow-down"></i> Загрузить ещё (показано ${archiveData.items.length} из ${archiveData.totalCount})
+                </button>
+            </div>
+        `;
+    } else if (archiveData.totalCount > 0) {
+        paginationHtml = `
+            <div class="text-center mt-3">
+                <small class="text-muted">Показано ${archiveData.items.length} из ${archiveData.totalCount} записей</small>
+            </div>
+        `;
+    }
+    
+    const container = document.querySelector('#archiveTable').parentElement.parentElement;
+    let paginationDiv = container.querySelector('.archive-pagination');
+    if (!paginationDiv) {
+        paginationDiv = document.createElement('div');
+        paginationDiv.className = 'archive-pagination';
+        container.appendChild(paginationDiv);
+    }
+    paginationDiv.innerHTML = paginationHtml;
+}
+
+async function loadMoreArchive() {
+    await refreshArchive(true);
 }
 
 function renderArchiveTable(items) {
