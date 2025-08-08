@@ -129,7 +129,7 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 		limit = 100
 	}
 
-	details, err := h.db.GetRecentRequests(limit)
+    details, err := h.db.GetRecentRequests(limit)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
@@ -162,10 +162,10 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 		details[i].ResultFilePath = makePublic(details[i].ResultFilePath)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"recent_requests": details,
-		"total":           len(details),
-	})
+    c.JSON(http.StatusOK, gin.H{
+        "recent_requests": details,
+        "total":           len(details),
+    })
 }
 
 // CleanupRequests запускает очистку артефактов, оставляя только последние keep записей

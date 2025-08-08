@@ -217,12 +217,11 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	query := `
+    // Лёгкая выборка без тяжёлых полей (headers, body_text, content_type и т.п.)
+    query := `
         SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
-            headers, body_text, body_size_bytes, success, http_status, duration_ns,
-            content_type, has_sensitive_data, error_category,
-            request_log_id, docx_log_id, gotenberg_log_id,
+            body_size_bytes, success, http_status, duration_ns,
             request_file_path, result_file_path, result_size_bytes
         FROM request_details
         WHERE path IN ('/api/v1/docx', '/generate-pdf')
@@ -230,7 +229,7 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
         LIMIT $1
     `
 
-    rows, err := p.db.Query(query, limit)
+	rows, err := p.db.Query(query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -241,23 +240,15 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 		var detail RequestDetail
 		var headersJSON []byte
 
-		err := rows.Scan(
-			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-			&detail.Path, &detail.ClientIP, &detail.UserAgent, &headersJSON,
-			&detail.BodyText, &detail.BodySizeBytes, &detail.Success,
-			&detail.HTTPStatus, &detail.DurationNs, &detail.ContentType,
-			&detail.HasSensitiveData, &detail.ErrorCategory,
-			&detail.RequestLogID, &detail.DocxLogID, &detail.GotenbergLogID,
-			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-		)
+        // Сканируем только необходимые столбцы
+        err := rows.Scan(
+            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+            &detail.Path, &detail.ClientIP, &detail.UserAgent,
+            &detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
+            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+        )
 		if err != nil {
 			return nil, err
-		}
-
-		if len(headersJSON) > 0 {
-			if err := json.Unmarshal(headersJSON, &detail.Headers); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal headers: %w", err)
-			}
 		}
 
 		details = append(details, detail)
