@@ -152,6 +152,9 @@ data:
     CREATE INDEX IF NOT EXISTS idx_request_details_success ON request_details(success);
     CREATE INDEX IF NOT EXISTS idx_request_details_error_category ON request_details(error_category);
     CREATE INDEX IF NOT EXISTS idx_request_details_result_size ON request_details(result_size_bytes);
+    -- Индексы для ускорения архива конвертаций
+    CREATE INDEX IF NOT EXISTS idx_request_details_path ON request_details(path);
+    CREATE INDEX IF NOT EXISTS idx_request_details_path_ts ON request_details(path, timestamp DESC);
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

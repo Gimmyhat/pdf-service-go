@@ -217,7 +217,7 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-    query := `
+	query := `
         SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
             headers, body_text, body_size_bytes, success, http_status, duration_ns,
@@ -230,7 +230,7 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
         LIMIT $1
     `
 
-	rows, err := p.db.Query(query, limit)
+    rows, err := p.db.Query(query, limit)
 	if err != nil {
 		return nil, err
 	}
