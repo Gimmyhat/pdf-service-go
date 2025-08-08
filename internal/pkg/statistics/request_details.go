@@ -74,6 +74,7 @@ func (p *PostgresDB) GetRequestDetail(requestID string) (*RequestDetail, error) 
 	`
 
         var detail RequestDetail
+        var headersJSON []byte
 
 	err := p.db.QueryRow(query, requestID).Scan(
 		&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
@@ -89,7 +90,7 @@ func (p *PostgresDB) GetRequestDetail(requestID string) (*RequestDetail, error) 
 		return nil, err
 	}
 
-	if len(headersJSON) > 0 {
+    if len(headersJSON) > 0 {
 		if err := json.Unmarshal(headersJSON, &detail.Headers); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal headers: %w", err)
 		}
