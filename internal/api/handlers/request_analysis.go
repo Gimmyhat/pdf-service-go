@@ -184,13 +184,6 @@ func (h *RequestAnalysisHandler) CleanupRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "kept": keep})
 }
 
-func getArtifactsBaseDir() string {
-	if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
-		return v
-	}
-	return "/app/data/artifacts"
-}
-
 // GetRequestBody возвращает тело конкретного запроса
 func (h *RequestAnalysisHandler) GetRequestBody(c *gin.Context) {
 	requestID := c.Param("request_id")
