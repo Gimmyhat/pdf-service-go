@@ -35,9 +35,9 @@ spec:
         - --chromium-disable-javascript=true
         - --chromium-allow-list=file:///tmp/.*
         - --libreoffice-restart-after=10
-        - --libreoffice-start-timeout=60s
-        - --api-timeout=60s
-        - --api-start-timeout=60s
+        - --libreoffice-start-timeout=120s
+        - --api-timeout=180s
+        - --api-start-timeout=120s
         - --api-trace-header=X-Request-ID
         - --log-level=info
         - --log-format=json

@@ -73,7 +73,7 @@ spec:
         - name: GOTENBERG_API_URL
           value: "http://nas-pdf-service-gotenberg:3000"
         - name: GOTENBERG_CLIENT_TIMEOUT
-          value: "60s"
+          value: "180s"
         - name: CIRCUIT_BREAKER_FAILURE_THRESHOLD
           value: "10"
         - name: CIRCUIT_BREAKER_RESET_TIMEOUT

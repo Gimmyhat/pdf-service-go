@@ -177,6 +177,9 @@ type RequestDetail struct {
 	RequestLogID     *int64            `json:"request_log_id" db:"request_log_id"`
 	DocxLogID        *int64            `json:"docx_log_id" db:"docx_log_id"`
 	GotenbergLogID   *int64            `json:"gotenberg_log_id" db:"gotenberg_log_id"`
+    RequestFilePath  *string           `json:"request_file_path" db:"request_file_path"`
+    ResultFilePath   *string           `json:"result_file_path" db:"result_file_path"`
+    ResultSizeBytes  *int64            `json:"result_size_bytes" db:"result_size_bytes"`
 }
 
 // RequestCapture представляет данные для захвата запроса
@@ -201,4 +204,5 @@ type RequestCaptureConfig struct {
 	ExcludeHeaders    []string `json:"exclude_headers"`     // Заголовки для исключения из захвата
 	RetentionDays     int      `json:"retention_days"`      // Количество дней хранения
 	MaskSensitiveData bool     `json:"mask_sensitive_data"` // Маскировать чувствительные данные
+    KeepLast          int      `json:"keep_last"`           // Хранить последние N запросов (артефакты)
 }

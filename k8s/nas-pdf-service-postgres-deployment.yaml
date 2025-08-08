@@ -110,6 +110,11 @@ data:
         gotenberg_log_id INTEGER REFERENCES gotenberg_logs(id)
     );
 
+    -- Дополнительные колонки для артефактов (файлы запроса и результата)
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS request_file_path TEXT;
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_file_path TEXT;
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_size_bytes BIGINT;
+
     CREATE TABLE IF NOT EXISTS error_logs (
         id SERIAL PRIMARY KEY,
         timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -146,6 +151,7 @@ data:
     CREATE INDEX IF NOT EXISTS idx_request_details_request_id ON request_details(request_id);
     CREATE INDEX IF NOT EXISTS idx_request_details_success ON request_details(success);
     CREATE INDEX IF NOT EXISTS idx_request_details_error_category ON request_details(error_category);
+    CREATE INDEX IF NOT EXISTS idx_request_details_result_size ON request_details(result_size_bytes);
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
