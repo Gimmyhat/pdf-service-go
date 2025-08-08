@@ -986,7 +986,8 @@ async function showRequestBodyFromApi(requestId) {
             throw new Error(`HTTP ${detailResponse.status}: ${detailResponse.statusText}`);
         }
         
-        const requestDetail = await detailResponse.json();
+        const requestDetailRaw = await detailResponse.json();
+        const requestDetail = requestDetailRaw.request_detail || requestDetailRaw;
         console.log('Request detail:', requestDetail);
         
         // Затем получаем тело запроса
@@ -1013,14 +1014,14 @@ function showRequestBody(requestId, bodyText, requestDetail = null) {
     const detailsSection = requestDetail ? `
         <div class="row mb-3">
             <div class="col-md-6">
-                <strong>Метод:</strong> ${requestDetail.method}<br>
-                <strong>Путь:</strong> ${requestDetail.path}<br>
-                <strong>HTTP Статус:</strong> ${requestDetail.http_status}
+                <strong>Метод:</strong> ${requestDetail.method ?? '—'}<br>
+                <strong>Путь:</strong> ${requestDetail.path ?? '—'}<br>
+                <strong>HTTP Статус:</strong> ${requestDetail.http_status ?? '—'}
             </div>
             <div class="col-md-6">
-                <strong>Client IP:</strong> ${requestDetail.client_ip}<br>
+                <strong>Client IP:</strong> ${requestDetail.client_ip ?? '—'}<br>
                 <strong>Длительность:</strong> ${requestDetail.duration_ns ? (requestDetail.duration_ns / 1000000).toFixed(2) + 'ms' : 'N/A'}<br>
-                <strong>Размер:</strong> ${requestDetail.body_size_bytes} bytes
+                <strong>Размер:</strong> ${requestDetail.body_size_bytes ?? 0} bytes
             </div>
         </div>
         <hr>
