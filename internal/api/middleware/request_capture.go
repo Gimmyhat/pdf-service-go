@@ -29,8 +29,14 @@ func RequestCaptureMiddleware(db *statistics.PostgresDB, config statistics.Reque
 	}
 
 	return func(c *gin.Context) {
-		// Проверяем, нужно ли захватывать этот запрос
-		if !shouldCaptureRequest(c.Request.URL.Path, config.ExcludePaths) {
+        // Архивируем только запросы конвертации JSON→PDF
+        if !isConversionRequestPath(c.Request.URL.Path) {
+            c.Next()
+            return
+        }
+
+        // Дополнительно проверяем пользовательские исключения
+        if !shouldCaptureRequest(c.Request.URL.Path, config.ExcludePaths) {
 			c.Next()
 			return
 		}
@@ -98,6 +104,14 @@ func shouldCaptureRequest(path string, excludePaths []string) bool {
 	}
 
 	return true
+}
+
+// isConversionRequestPath возвращает true, если путь относится к конвертации JSON→PDF
+func isConversionRequestPath(path string) bool {
+    if path == "/api/v1/docx" || path == "/generate-pdf" {
+        return true
+    }
+    return false
 }
 
 // shouldCaptureBody проверяет, нужно ли захватывать body запроса

@@ -217,7 +217,7 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	query := `
+    query := `
         SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
             headers, body_text, body_size_bytes, success, http_status, duration_ns,
@@ -225,6 +225,7 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
             request_log_id, docx_log_id, gotenberg_log_id,
             request_file_path, result_file_path, result_size_bytes
         FROM request_details
+        WHERE path IN ('/api/v1/docx', '/generate-pdf')
         ORDER BY timestamp DESC
         LIMIT $1
     `
