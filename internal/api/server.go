@@ -157,13 +157,7 @@ func (s *Server) SetupRoutes() {
 	s.Router.GET("/api/v1/errors/stats", s.Handlers.Errors.GetErrorStats)
 	s.Router.GET("/api/v1/errors/:id", s.Handlers.Errors.GetErrorDetails)
 
-	// API для анализа детальных запросов
-	s.Router.GET("/api/v1/requests/error", s.Handlers.RequestAnalysis.GetErrorRequests)
-	s.Router.GET("/api/v1/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
-	s.Router.GET("/api/v1/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
-	s.Router.GET("/api/v1/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
-	s.Router.GET("/api/v1/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
-	s.Router.POST("/api/v1/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
+	// API для анализа детальных запросов (регистрируется ниже внутри группы v1)
 
 	// Единый дашборд
 	s.Router.GET("/dashboard", func(c *gin.Context) {
@@ -231,19 +225,19 @@ func (s *Server) SetupRoutes() {
 		})
 	})
 
-    // API endpoints
+	// API endpoints
 	v1 := s.Router.Group("/api/v1")
 	{
 		v1.POST("/docx", func(c *gin.Context) {
 			s.Handlers.PDF.GenerateDocx(c)
 		})
-        // Дублируем endpoints архива в группе v1 (для корректного матчинга роутов)
-        v1.GET("/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
-        v1.POST("/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
-        v1.GET("/requests/error", s.Handlers.RequestAnalysis.GetErrorRequests)
-        v1.GET("/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
-        v1.GET("/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
-        v1.GET("/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
+		// Дублируем endpoints архива в группе v1 (для корректного матчинга роутов)
+		v1.GET("/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
+		v1.POST("/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
+		v1.GET("/requests/error", s.Handlers.RequestAnalysis.GetErrorRequests)
+		v1.GET("/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
+		v1.GET("/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
+		v1.GET("/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
 	}
 
 	// Поддержка старого endpoint'а для обратной совместимости
