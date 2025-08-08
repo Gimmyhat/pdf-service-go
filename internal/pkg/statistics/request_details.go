@@ -240,8 +240,8 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	return p.GetRecentRequestsCtx(context.TODO(), limit)
 }
 
-// GetRecentRequestsWithPaginationCtx возвращает последние запросы с пагинацией и общим счётчиком
-func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, limit, offset int) ([]RequestDetail, int, error) {
+// GetRecentRequestsWithPaginationCtx возвращает последние запросы с пагинацией и признаком наличия следующей страницы (без COUNT(*))
+func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, limit, offset int) ([]RequestDetail, bool, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 25
 	}
@@ -249,19 +249,9 @@ func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, lim
 		offset = 0
 	}
 
-	// Сначала получаем общий счётчик для фильтрованных записей
-	countQuery := `
-		SELECT COUNT(*)
-		FROM request_details
-		WHERE path IN ('/api/v1/docx', '/generate-pdf')
-	`
-	var totalCount int
-	if err := p.db.QueryRowContext(ctx, countQuery).Scan(&totalCount); err != nil {
-		return nil, 0, err
-	}
-
 	// Лёгкая выборка с пагинацией без тяжёлых полей
-	query := `
+    // Берём на одну запись больше, чтобы определить hasMore без дорогого COUNT(*)
+    query := `
 		SELECT 
 			id, request_id, timestamp, method, path, client_ip, user_agent,
 			body_size_bytes, success, http_status, duration_ns,
@@ -269,12 +259,15 @@ func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, lim
 		FROM request_details
 		WHERE path IN ('/api/v1/docx', '/generate-pdf')
 		ORDER BY timestamp DESC
-		LIMIT $1 OFFSET $2
+        LIMIT $1 OFFSET $2
 	`
 
-	rows, err := p.db.QueryContext(ctx, query, limit, offset)
+    // Используем limitPlusOne для детекции hasMore
+    limitPlusOne := limit + 1
+
+    rows, err := p.db.QueryContext(ctx, query, limitPlusOne, offset)
 	if err != nil {
-		return nil, 0, err
+        return nil, false, err
 	}
 	defer rows.Close()
 
@@ -287,12 +280,18 @@ func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, lim
 			&detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
 			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
 		); err != nil {
-			return nil, 0, err
+            return nil, false, err
 		}
 		details = append(details, detail)
 	}
-	
-	return details, totalCount, nil
+
+    hasMore := false
+    if len(details) > limit {
+        hasMore = true
+        details = details[:limit]
+    }
+
+    return details, hasMore, nil
 }
 
 // CleanupOldRequestArtifactsKeepLast удаляет записи и файлы, оставляя только последние keep записей

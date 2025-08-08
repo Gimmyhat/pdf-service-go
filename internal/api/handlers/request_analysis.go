@@ -127,12 +127,12 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "25")
 	offsetStr := c.DefaultQuery("offset", "0")
-	
+
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 || limit > 200 {
 		limit = 25
 	}
-	
+
 	offset, err := strconv.Atoi(offsetStr)
 	if err != nil || offset < 0 {
 		offset = 0
@@ -154,7 +154,7 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 
 	// Быстрый SQL с пагинацией; используем контекст
 	start := time.Now()
-	details, totalCount, err := h.db.GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
+    details, hasMore, err := h.db.GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
@@ -191,15 +191,14 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 	c.Header("X-Archive-DB-ms", strconv.FormatInt(time.Since(start).Milliseconds(), 10))
 	c.Header("X-Archive-Cached", "false")
 	c.Header("Cache-Control", "private, max-age=5")
-	
-	c.JSON(http.StatusOK, gin.H{
-		"recent_requests": details,
-		"total":           len(details),
-		"total_count":     totalCount,
-		"offset":          offset,
-		"limit":           limit,
-		"has_more":        offset+len(details) < totalCount,
-	})
+
+    c.JSON(http.StatusOK, gin.H{
+        "recent_requests": details,
+        "total":           len(details),
+        "offset":          offset,
+        "limit":           limit,
+        "has_more":        hasMore,
+    })
 }
 
 // CleanupRequests запускает очистку артефактов, оставляя только последние keep записей
