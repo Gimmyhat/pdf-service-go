@@ -1,10 +1,11 @@
 package statistics
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "os"
+    "time"
 )
 
 // === МЕТОДЫ ДЛЯ РАБОТЫ С ДЕТАЛЬНЫМИ ЗАПРОСАМИ ===
@@ -101,7 +102,7 @@ func (p *PostgresDB) GetRequestDetail(requestID string) (*RequestDetail, error) 
 
 // GetRequestDetailsByError получает детальную информацию о запросах с ошибками
 func (p *PostgresDB) GetRequestDetailsByError(limit int, since time.Time) ([]RequestDetail, error) {
-    query := `
+	query := `
         SELECT 
             id, request_id, timestamp, method, path, client_ip, user_agent,
             body_size_bytes, success, http_status, duration_ns,
@@ -119,23 +120,23 @@ func (p *PostgresDB) GetRequestDetailsByError(limit int, since time.Time) ([]Req
 	}
 	defer rows.Close()
 
-    var details []RequestDetail
-    for rows.Next() {
-        var detail RequestDetail
+	var details []RequestDetail
+	for rows.Next() {
+		var detail RequestDetail
 
-        err := rows.Scan(
-            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-            &detail.Path, &detail.ClientIP, &detail.UserAgent,
-            &detail.BodySizeBytes, &detail.Success,
-            &detail.HTTPStatus, &detail.DurationNs,
-            &detail.ErrorCategory,
-            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-        )
+		err := rows.Scan(
+			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+			&detail.Path, &detail.ClientIP, &detail.UserAgent,
+			&detail.BodySizeBytes, &detail.Success,
+			&detail.HTTPStatus, &detail.DurationNs,
+			&detail.ErrorCategory,
+			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+		)
 		if err != nil {
 			return nil, err
 		}
 
-        details = append(details, detail)
+		details = append(details, detail)
 	}
 
 	return details, nil
@@ -175,58 +176,14 @@ func (p *PostgresDB) GetRequestDetailsByPattern(errorCategory string, limit int,
 
 	var details []RequestDetail
 	for rows.Next() {
-        var detail RequestDetail
+		var detail RequestDetail
 
-        err := rows.Scan(
-            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
-            &detail.Path, &detail.ClientIP, &detail.UserAgent,
-            &detail.BodySizeBytes, &detail.Success,
-            &detail.HTTPStatus, &detail.DurationNs,
-            &detail.ErrorCategory,
-            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
-        )
-		if err != nil {
-			return nil, err
-		}
-
-		details = append(details, detail)
-	}
-
-	return details, nil
-}
-
-// GetRecentRequests возвращает последние запросы (успешные и с ошибками)
-func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
-	if limit <= 0 || limit > 1000 {
-		limit = 100
-	}
-	// Лёгкая выборка без тяжёлых полей (headers, body_text, content_type и т.п.)
-	query := `
-        SELECT 
-            id, request_id, timestamp, method, path, client_ip, user_agent,
-            body_size_bytes, success, http_status, duration_ns,
-            request_file_path, result_file_path, result_size_bytes
-        FROM request_details
-        WHERE path IN ('/api/v1/docx', '/generate-pdf')
-        ORDER BY timestamp DESC
-        LIMIT $1
-    `
-
-	rows, err := p.db.Query(query, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var details []RequestDetail
-    for rows.Next() {
-        var detail RequestDetail
-
-		// Сканируем только необходимые столбцы
-        err := rows.Scan(
+		err := rows.Scan(
 			&detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
 			&detail.Path, &detail.ClientIP, &detail.UserAgent,
-			&detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
+			&detail.BodySizeBytes, &detail.Success,
+			&detail.HTTPStatus, &detail.DurationNs,
+			&detail.ErrorCategory,
 			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
 		)
 		if err != nil {
@@ -237,6 +194,50 @@ func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
 	}
 
 	return details, nil
+}
+
+// GetRecentRequestsCtx возвращает последние запросы (успешные и с ошибками) с поддержкой контекста
+func (p *PostgresDB) GetRecentRequestsCtx(ctx context.Context, limit int) ([]RequestDetail, error) {
+    if limit <= 0 || limit > 1000 {
+        limit = 100
+    }
+    // Лёгкая выборка без тяжёлых полей (headers, body_text, content_type и т.п.)
+    query := `
+        SELECT 
+            id, request_id, timestamp, method, path, client_ip, user_agent,
+            body_size_bytes, success, http_status, duration_ns,
+            request_file_path, result_file_path, result_size_bytes
+        FROM request_details
+        WHERE path IN ('/api/v1/docx', '/generate-pdf')
+        ORDER BY timestamp DESC
+        LIMIT $1
+    `
+
+    rows, err := p.db.QueryContext(ctx, query, limit)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var details []RequestDetail
+    for rows.Next() {
+        var detail RequestDetail
+        if err := rows.Scan(
+            &detail.ID, &detail.RequestID, &detail.Timestamp, &detail.Method,
+            &detail.Path, &detail.ClientIP, &detail.UserAgent,
+            &detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
+            &detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
+        ); err != nil {
+            return nil, err
+        }
+        details = append(details, detail)
+    }
+    return details, nil
+}
+
+// GetRecentRequests — обёртка без контекста для обратной совместимости
+func (p *PostgresDB) GetRecentRequests(limit int) ([]RequestDetail, error) {
+    return p.GetRecentRequestsCtx(context.TODO(), limit)
 }
 
 // CleanupOldRequestArtifactsKeepLast удаляет записи и файлы, оставляя только последние keep записей
