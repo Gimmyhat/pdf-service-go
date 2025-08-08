@@ -120,17 +120,17 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	router.Use(middleware.PrometheusMiddleware())
 	router.Use(middleware.StatisticsMiddleware())
 
-    // Конфигурируем таймаут запроса из переменной окружения REQUEST_TIMEOUT (по умолчанию 180s)
-    requestTimeout := getRequestTimeout()
-    logger.Info("Request timeout configured", zap.String("REQUEST_TIMEOUT", requestTimeout.String()))
+	// Конфигурируем таймаут запроса из переменной окружения REQUEST_TIMEOUT (по умолчанию 180s)
+	requestTimeout := getRequestTimeout()
+	logger.Info("Request timeout configured", zap.String("REQUEST_TIMEOUT", requestTimeout.String()))
 
-    // Добавляем middleware для таймаутов
-    router.Use(func(c *gin.Context) {
-        ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
-        defer cancel()
-        c.Request = c.Request.WithContext(ctx)
-        c.Next()
-    })
+	// Добавляем middleware для таймаутов
+	router.Use(func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+		defer cancel()
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
 
 	logger.Info("Server middleware configured")
 
@@ -231,12 +231,19 @@ func (s *Server) SetupRoutes() {
 		})
 	})
 
-	// API endpoints
+    // API endpoints
 	v1 := s.Router.Group("/api/v1")
 	{
 		v1.POST("/docx", func(c *gin.Context) {
 			s.Handlers.PDF.GenerateDocx(c)
 		})
+        // Дублируем endpoints архива в группе v1 (для корректного матчинга роутов)
+        v1.GET("/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
+        v1.POST("/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
+        v1.GET("/requests/error", s.Handlers.RequestAnalysis.GetErrorRequests)
+        v1.GET("/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
+        v1.GET("/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
+        v1.GET("/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
 	}
 
 	// Поддержка старого endpoint'а для обратной совместимости
@@ -259,15 +266,15 @@ func (s *Server) SetupRoutes() {
 }
 
 func (s *Server) Start(addr string) error {
-    // Настраиваем write timeout с запасом относительно REQUEST_TIMEOUT
-    requestTimeout := getRequestTimeout()
-    writeTimeout := requestTimeout + 10*time.Second
+	// Настраиваем write timeout с запасом относительно REQUEST_TIMEOUT
+	requestTimeout := getRequestTimeout()
+	writeTimeout := requestTimeout + 10*time.Second
 
-    s.server = &http.Server{
+	s.server = &http.Server{
 		Addr:           addr,
 		Handler:        s.Router,
 		ReadTimeout:    10 * time.Second,
-        WriteTimeout:   writeTimeout,
+		WriteTimeout:   writeTimeout,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
@@ -361,13 +368,13 @@ func (s *Server) handleHealth() gin.HandlerFunc {
 // getRequestTimeout читает REQUEST_TIMEOUT из переменных окружения.
 // Формат значения: duration (например, "180s", "2m"). По умолчанию 180s.
 func getRequestTimeout() time.Duration {
-    val := os.Getenv("REQUEST_TIMEOUT")
-    if val == "" {
-        return 180 * time.Second
-    }
-    d, err := time.ParseDuration(val)
-    if err != nil || d <= 0 {
-        return 180 * time.Second
-    }
-    return d
+	val := os.Getenv("REQUEST_TIMEOUT")
+	if val == "" {
+		return 180 * time.Second
+	}
+	d, err := time.ParseDuration(val)
+	if err != nil || d <= 0 {
+		return 180 * time.Second
+	}
+	return d
 }
