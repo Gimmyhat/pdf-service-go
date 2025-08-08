@@ -40,6 +40,10 @@ function setupTabHandlers() {
                 case '#overview':
                     updateOverview();
                     break;
+                case '#archive':
+                    // Подгружаем архив при первом открытии вкладки
+                    refreshArchive();
+                    break;
             }
         });
     });
@@ -1186,17 +1190,17 @@ function renderArchiveTable(items) {
         return;
     }
     const rows = items.map(it => {
-        const ts = new Date(it.timestamp).toLocaleString('ru');
-        const dur = it.duration_ns ? (it.duration_ns / 1e6).toFixed(1) + 'ms' : '';
-        const bodySize = typeof it.body_size_bytes === 'number' ? formatBytes(it.body_size_bytes) : '';
-        const statusBadge = it.success ? '<span class="badge bg-success">OK</span>' : `<span class="badge bg-danger">${it.http_status || 'ERR'}</span>`;
-        const reqLink = it.request_file_path ? `<a href="${it.request_file_path}" target="_blank">json</a>` : '';
-        const resLink = it.result_file_path ? `<a href="${it.result_file_path}" target="_blank">pdf</a>${it.result_size_bytes ? ` <small class="text-muted">(${formatBytes(it.result_size_bytes)})</small>` : ''}` : '';
+        const ts = it.timestamp ? new Date(it.timestamp).toLocaleString('ru') : '—';
+        const dur = typeof it.duration_ns === 'number' ? (it.duration_ns / 1e6).toFixed(1) + 'ms' : '—';
+        const bodySize = typeof it.body_size_bytes === 'number' ? formatBytes(it.body_size_bytes) : '—';
+        const statusBadge = it.success ? '<span class="badge bg-success">OK</span>' : `<span class="badge bg-danger">${it.http_status ?? 'ERR'}</span>`;
+        const reqLink = it.request_file_path ? `<a href="${it.request_file_path}" target="_blank">json</a>` : '—';
+        const resLink = it.result_file_path ? `<a href="${it.result_file_path}" target="_blank">pdf</a>${(typeof it.result_size_bytes === 'number') ? ` <small class="text-muted">(${formatBytes(it.result_size_bytes)})</small>` : ''}` : '—';
         const viewBtn = it.request_id ? `<button class="btn btn-sm btn-outline-primary" onclick="showRequestBodyFromApi('${it.request_id}')"><i class="bi bi-eye"></i></button>` : '';
         return `<tr>
             <td>${ts}</td>
-            <td>${it.method}</td>
-            <td><code>${it.path}</code></td>
+            <td>${it.method ?? '—'}</td>
+            <td><code>${it.path ?? '—'}</code></td>
             <td>${statusBadge}</td>
             <td>${dur}</td>
             <td>${bodySize}</td>

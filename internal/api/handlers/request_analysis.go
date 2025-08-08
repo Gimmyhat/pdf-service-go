@@ -154,14 +154,24 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 
 	// Быстрый SQL с пагинацией; используем контекст
 	start := time.Now()
-    details, hasMore, err := h.db.GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
+	details, hasMore, err := h.db.GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
 		return
 	}
 
-	// Преобразуем абсолютные пути к публичным URL через /files
+    // Принудительная фильтрация по допустимым путям (дополнительная защита)
+    allowed := map[string]bool{"/api/v1/docx": true, "/generate-pdf": true}
+    filtered := make([]statistics.RequestDetail, 0, len(details))
+    for _, d := range details {
+        if allowed[d.Path] {
+            filtered = append(filtered, d)
+        }
+    }
+    details = filtered
+
+    // Преобразуем абсолютные пути к публичным URL через /files
 	baseDir := getArtifactsBaseDir()
 	makePublic := func(p *string) *string {
 		if p == nil || *p == "" {
@@ -192,13 +202,13 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 	c.Header("X-Archive-Cached", "false")
 	c.Header("Cache-Control", "private, max-age=5")
 
-    c.JSON(http.StatusOK, gin.H{
-        "recent_requests": details,
-        "total":           len(details),
-        "offset":          offset,
-        "limit":           limit,
-        "has_more":        hasMore,
-    })
+	c.JSON(http.StatusOK, gin.H{
+		"recent_requests": details,
+		"total":           len(details),
+		"offset":          offset,
+		"limit":           limit,
+		"has_more":        hasMore,
+	})
 }
 
 // CleanupRequests запускает очистку артефактов, оставляя только последние keep записей
