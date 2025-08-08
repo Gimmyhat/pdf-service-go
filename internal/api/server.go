@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-    "strings"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +18,7 @@ import (
 	"pdf-service-go/internal/pkg/statistics"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-contrib/gzip"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
@@ -37,6 +38,9 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 
 	// Создаем новый роутер без стандартного логгера
 	router := gin.New()
+
+	// Включаем gzip-сжатие ответов
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// Настройка лимитов
 	router.MaxMultipartMemory = 8 << 20 // 8 MiB
@@ -126,13 +130,13 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	logger.Info("Request timeout configured", zap.String("REQUEST_TIMEOUT", requestTimeout.String()))
 
 	// Добавляем middleware для таймаутов
-    router.Use(func(c *gin.Context) {
-        // Для лёгких GET запросов архива используем короткий SLA таймаут
-        timeout := requestTimeout
-        if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/api/v1/requests/recent") {
-            timeout = 5 * time.Second
-        }
-        ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	router.Use(func(c *gin.Context) {
+		// Для лёгких GET запросов архива используем короткий SLA таймаут
+		timeout := requestTimeout
+		if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/api/v1/requests/recent") {
+			timeout = 5 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()

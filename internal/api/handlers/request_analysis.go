@@ -1,26 +1,26 @@
 package handlers
 
 import (
-    "context"
-    "net/http"
-    "pdf-service-go/internal/pkg/logger"
-    "pdf-service-go/internal/pkg/statistics"
-    "strconv"
-    "strings"
-    "sync"
-    "time"
+	"context"
+	"net/http"
+	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/statistics"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
-    "github.com/gin-gonic/gin"
-    "go.uber.org/zap"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type RequestAnalysisHandler struct {
-    db *statistics.PostgresDB
+	db *statistics.PostgresDB
 
-    // Короткий кеш для /requests/recent
-    cacheMu     sync.RWMutex
-    recentData  []statistics.RequestDetail
-    recentAt    time.Time
+	// Короткий кеш для /requests/recent
+	cacheMu    sync.RWMutex
+	recentData []statistics.RequestDetail
+	recentAt   time.Time
 }
 
 func NewRequestAnalysisHandler(db *statistics.PostgresDB) *RequestAnalysisHandler {
@@ -130,40 +130,44 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 
 // GetRecentRequests возвращает последние запросы (успешные и с ошибками)
 func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
-    limitStr := c.DefaultQuery("limit", "100")
-    limit, err := strconv.Atoi(limitStr)
-    if err != nil || limit <= 0 || limit > 1000 {
-        limit = 100
-    }
+	limitStr := c.DefaultQuery("limit", "100")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 || limit > 1000 {
+		limit = 100
+	}
 
-    // Лёгкий кеш на 10 секунд (отключается параметром nocache=1)
-    if c.DefaultQuery("nocache", "0") != "1" {
-        h.cacheMu.RLock()
-        if time.Since(h.recentAt) <= 10*time.Second && h.recentData != nil {
-            cached := make([]statistics.RequestDetail, len(h.recentData))
-            copy(cached, h.recentData)
-            h.cacheMu.RUnlock()
-            // Обрежем до запрошенного лимита, если нужно
-            if len(cached) > limit {
-                cached = cached[:limit]
-            }
+	// Лёгкий кеш на 10 секунд (отключается параметром nocache=1)
+	if c.DefaultQuery("nocache", "0") != "1" {
+		h.cacheMu.RLock()
+		if time.Since(h.recentAt) <= 10*time.Second && h.recentData != nil {
+			cached := make([]statistics.RequestDetail, len(h.recentData))
+			copy(cached, h.recentData)
+			h.cacheMu.RUnlock()
+			// Обрежем до запрошенного лимита, если нужно
+			if len(cached) > limit {
+				cached = cached[:limit]
+			}
+            // Тайминги кэш-хита в заголовках
+            c.Header("X-Archive-Cached", "true")
+            c.Header("X-Archive-Cache-Age-ms", strconv.FormatInt(time.Since(h.recentAt).Milliseconds(), 10))
             c.JSON(http.StatusOK, gin.H{
-                "recent_requests": cached,
-                "total":           len(cached),
-                "cached":          true,
+				"recent_requests": cached,
+				"total":           len(cached),
+				"cached":          true,
                 "cache_age_ms":    time.Since(h.recentAt).Milliseconds(),
-            })
-            return
-        }
-        h.cacheMu.RUnlock()
-    }
+			})
+			return
+		}
+		h.cacheMu.RUnlock()
+	}
 
-    // Добавим явный 5s таймаут на этот запрос (дублирует middleware, но безопасно)
-    ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-    defer cancel()
+	// Добавим явный 5s таймаут на этот запрос (дублирует middleware, но безопасно)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
 
     // Быстрый SQL без тяжёлых полей; используем контекст
-    details, err := h.db.GetRecentRequestsCtx(ctx, limit)
+    start := time.Now()
+	details, err := h.db.GetRecentRequestsCtx(ctx, limit)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
@@ -196,20 +200,24 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 		details[i].ResultFilePath = makePublic(details[i].ResultFilePath)
 	}
 
-    // Обновим кеш
-    if c.DefaultQuery("nocache", "0") != "1" {
-        h.cacheMu.Lock()
-        h.recentData = make([]statistics.RequestDetail, len(details))
-        copy(h.recentData, details)
-        h.recentAt = time.Now()
-        h.cacheMu.Unlock()
-    }
+	// Обновим кеш
+	if c.DefaultQuery("nocache", "0") != "1" {
+		h.cacheMu.Lock()
+		h.recentData = make([]statistics.RequestDetail, len(details))
+		copy(h.recentData, details)
+		h.recentAt = time.Now()
+		h.cacheMu.Unlock()
+	}
+
+    // Тайминги в заголовках для диагностики
+    c.Header("X-Archive-DB-ms", strconv.FormatInt(time.Since(start).Milliseconds(), 10))
+    c.Header("X-Archive-Cached", "false")
 
     c.JSON(http.StatusOK, gin.H{
-        "recent_requests": details,
-        "total":           len(details),
-        "cached":          false,
-    })
+		"recent_requests": details,
+		"total":           len(details),
+		"cached":          false,
+	})
 }
 
 // CleanupRequests запускает очистку артефактов, оставляя только последние keep записей
