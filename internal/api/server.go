@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+    "strings"
 	"syscall"
 	"time"
 
@@ -125,8 +126,13 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	logger.Info("Request timeout configured", zap.String("REQUEST_TIMEOUT", requestTimeout.String()))
 
 	// Добавляем middleware для таймаутов
-	router.Use(func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+    router.Use(func(c *gin.Context) {
+        // Для лёгких GET запросов архива используем короткий SLA таймаут
+        timeout := requestTimeout
+        if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/api/v1/requests/recent") {
+            timeout = 5 * time.Second
+        }
+        ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()

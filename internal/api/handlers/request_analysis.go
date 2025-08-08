@@ -123,12 +123,13 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 
 // GetRecentRequests возвращает последние запросы (успешные и с ошибками)
 func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
-	limitStr := c.DefaultQuery("limit", "100")
+    limitStr := c.DefaultQuery("limit", "100")
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 
+    // Быстрый health-check SQL без join'ов и тяжёлых полей
     details, err := h.db.GetRecentRequests(limit)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
