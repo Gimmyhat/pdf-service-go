@@ -250,8 +250,8 @@ func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, lim
 	}
 
 	// Лёгкая выборка с пагинацией без тяжёлых полей
-    // Берём на одну запись больше, чтобы определить hasMore без дорогого COUNT(*)
-    query := `
+	// Берём на одну запись больше, чтобы определить hasMore без дорогого COUNT(*)
+	query := `
 		SELECT 
 			id, request_id, timestamp, method, path, client_ip, user_agent,
 			body_size_bytes, success, http_status, duration_ns,
@@ -262,12 +262,12 @@ func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, lim
         LIMIT $1 OFFSET $2
 	`
 
-    // Используем limitPlusOne для детекции hasMore
-    limitPlusOne := limit + 1
+	// Используем limitPlusOne для детекции hasMore
+	limitPlusOne := limit + 1
 
-    rows, err := p.db.QueryContext(ctx, query, limitPlusOne, offset)
+	rows, err := p.db.QueryContext(ctx, query, limitPlusOne, offset)
 	if err != nil {
-        return nil, false, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
@@ -280,18 +280,18 @@ func (p *PostgresDB) GetRecentRequestsWithPaginationCtx(ctx context.Context, lim
 			&detail.BodySizeBytes, &detail.Success, &detail.HTTPStatus, &detail.DurationNs,
 			&detail.RequestFilePath, &detail.ResultFilePath, &detail.ResultSizeBytes,
 		); err != nil {
-            return nil, false, err
+			return nil, false, err
 		}
 		details = append(details, detail)
 	}
 
-    hasMore := false
-    if len(details) > limit {
-        hasMore = true
-        details = details[:limit]
-    }
+	hasMore := false
+	if len(details) > limit {
+		hasMore = true
+		details = details[:limit]
+	}
 
-    return details, hasMore, nil
+	return details, hasMore, nil
 }
 
 // CleanupOldRequestArtifactsKeepLast удаляет записи и файлы, оставляя только последние keep записей

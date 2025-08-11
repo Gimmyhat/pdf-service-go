@@ -50,6 +50,24 @@ func Initialize(cfg Config) error {
 	return err
 }
 
+// InitializeOrRetry пытается инициализировать Statistics, если она ещё не инициализирована.
+// В отличие от Initialize, может вызываться многократно до успешного подключения.
+var initMu sync.Mutex
+
+func InitializeOrRetry(cfg Config) error {
+    initMu.Lock()
+    defer initMu.Unlock()
+    if instance != nil {
+        return nil
+    }
+    db, err := New(cfg)
+    if err != nil {
+        return err
+    }
+    instance = NewStatistics(db)
+    return nil
+}
+
 // TrackRequest записывает информацию о запросе
 func (s *Statistics) TrackRequest(path, method string, duration time.Duration, success bool) error {
 	return s.db.LogRequest(time.Now(), path, method, duration, success)

@@ -15,6 +15,7 @@
 - **Retry with Exponential Backoff**: Повторные попытки при временных сбоях
 - **Timeout Management**: Настраиваемые таймауты для разных операций
 - **Health Checks**: Kubernetes probes для мониторинга состояния
+ - **Lazy init for DB**: Ленивое получение `Statistics`/`PostgresDB` в хендлерах для корректной работы при поздней инициализации
 
 ### Паттерны наблюдаемости
 - **Structured Logging**: JSON логи с контекстными полями (Zap)
@@ -42,6 +43,7 @@
 
 ### Infrastructure (`internal/pkg/`)
 - **statistics/**: Работа с PostgreSQL, система отслеживания ошибок. Архив выбирается с фильтром `path IN ('/api/v1/docx','/generate-pdf')`; добавлены индексы `path` и `(path, timestamp)`
+  - Добавлен `InitializeOrRetry` вместо единоразового `Initialize` для безопасной инициализации с ретраями
 - **errortracker/**: Централизованное логирование ошибок
 - **config/**: Управление конфигурацией через environment variables
 

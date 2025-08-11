@@ -42,6 +42,7 @@ function setupTabHandlers() {
                     break;
                 case '#archive':
                     // Подгружаем архив при первом открытии вкладки
+                    initArchiveInfiniteScroll();
                     refreshArchive();
                     break;
             }
@@ -1180,6 +1181,25 @@ function updateArchivePagination() {
 
 async function loadMoreArchive() {
     await refreshArchive(true);
+}
+
+// Инициализация бесконечной прокрутки для архива
+let archiveObserverInitialized = false;
+function initArchiveInfiniteScroll() {
+    if (archiveObserverInitialized) return;
+    const sentinel = document.getElementById('archiveSentinel');
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(async (entries) => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) {
+                if (archiveData.hasMore) {
+                    await refreshArchive(true);
+                }
+            }
+        }
+    }, { root: null, rootMargin: '0px', threshold: 1.0 });
+    observer.observe(sentinel);
+    archiveObserverInitialized = true;
 }
 
 function renderArchiveTable(items) {

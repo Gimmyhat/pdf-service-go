@@ -22,8 +22,24 @@ func NewRequestAnalysisHandler(db *statistics.PostgresDB) *RequestAnalysisHandle
 	return &RequestAnalysisHandler{db: db}
 }
 
+// getDB возвращает актуальный экземпляр PostgresDB из синглтона, если поле ещё не установлено
+func (h *RequestAnalysisHandler) getDB() *statistics.PostgresDB {
+	if h.db != nil {
+		return h.db
+	}
+	db := statistics.GetPostgresDB()
+	if db != nil {
+		h.db = db
+	}
+	return h.db
+}
+
 // GetRequestDetail возвращает детальную информацию о конкретном запросе
 func (h *RequestAnalysisHandler) GetRequestDetail(c *gin.Context) {
+	if h.getDB() == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics DB is not ready"})
+		return
+	}
 	requestID := c.Param("request_id")
 	if requestID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -32,7 +48,7 @@ func (h *RequestAnalysisHandler) GetRequestDetail(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.db.GetRequestDetail(requestID)
+	detail, err := h.getDB().GetRequestDetail(requestID)
 	if err != nil {
 		logger.Error("Failed to get request detail",
 			zap.String("request_id", requestID),
@@ -50,6 +66,10 @@ func (h *RequestAnalysisHandler) GetRequestDetail(c *gin.Context) {
 
 // GetErrorRequests возвращает запросы с ошибками
 func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
+	if h.getDB() == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics DB is not ready"})
+		return
+	}
 	// Парсим параметры
 	limitStr := c.DefaultQuery("limit", "20")
 	periodStr := c.DefaultQuery("period", "24h")
@@ -73,10 +93,10 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 
 	if categoryFilter != "" {
 		// Фильтр по категории ошибки
-		details, err = h.db.GetRequestDetailsByPattern(categoryFilter, limit, since)
+		details, err = h.getDB().GetRequestDetailsByPattern(categoryFilter, limit, since)
 	} else {
 		// Все ошибки
-		details, err = h.db.GetRequestDetailsByError(limit, since)
+		details, err = h.getDB().GetRequestDetailsByError(limit, since)
 	}
 
 	if err != nil {
@@ -125,6 +145,10 @@ func (h *RequestAnalysisHandler) GetErrorRequests(c *gin.Context) {
 
 // GetRecentRequests возвращает последние запросы с автоочисткой и пагинацией
 func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
+	if h.getDB() == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics DB is not ready"})
+		return
+	}
 	limitStr := c.DefaultQuery("limit", "25")
 	offsetStr := c.DefaultQuery("offset", "0")
 
@@ -141,7 +165,7 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 	// Автоочистка при первом запросе (offset=0) для поддержания производительности
 	if offset == 0 && c.DefaultQuery("skip_cleanup", "0") != "1" {
 		cleanupStart := time.Now()
-		if err := h.db.CleanupOldRequestArtifactsKeepLast(100); err != nil {
+		if err := h.getDB().CleanupOldRequestArtifactsKeepLast(100); err != nil {
 			logger.Warn("Auto-cleanup failed", zap.Error(err))
 		} else {
 			logger.Info("Auto-cleanup completed", zap.Duration("duration", time.Since(cleanupStart)))
@@ -154,24 +178,24 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 
 	// Быстрый SQL с пагинацией; используем контекст
 	start := time.Now()
-	details, hasMore, err := h.db.GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
+	details, hasMore, err := h.getDB().GetRecentRequestsWithPaginationCtx(ctx, limit, offset)
 	if err != nil {
 		logger.Error("Failed to get recent requests", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent requests"})
 		return
 	}
 
-    // Принудительная фильтрация по допустимым путям (дополнительная защита)
-    allowed := map[string]bool{"/api/v1/docx": true, "/generate-pdf": true}
-    filtered := make([]statistics.RequestDetail, 0, len(details))
-    for _, d := range details {
-        if allowed[d.Path] {
-            filtered = append(filtered, d)
-        }
-    }
-    details = filtered
+	// Принудительная фильтрация по допустимым путям (дополнительная защита)
+	allowed := map[string]bool{"/api/v1/docx": true, "/generate-pdf": true}
+	filtered := make([]statistics.RequestDetail, 0, len(details))
+	for _, d := range details {
+		if allowed[d.Path] {
+			filtered = append(filtered, d)
+		}
+	}
+	details = filtered
 
-    // Преобразуем абсолютные пути к публичным URL через /files
+	// Преобразуем абсолютные пути к публичным URL через /files
 	baseDir := getArtifactsBaseDir()
 	makePublic := func(p *string) *string {
 		if p == nil || *p == "" {
@@ -213,6 +237,10 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 
 // CleanupRequests запускает очистку артефактов, оставляя только последние keep записей
 func (h *RequestAnalysisHandler) CleanupRequests(c *gin.Context) {
+	if h.getDB() == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics DB is not ready"})
+		return
+	}
 	keepStr := c.DefaultQuery("keep", "100")
 	keep, err := strconv.Atoi(keepStr)
 	if err != nil || keep <= 0 {
@@ -228,6 +256,10 @@ func (h *RequestAnalysisHandler) CleanupRequests(c *gin.Context) {
 
 // GetRequestBody возвращает тело конкретного запроса
 func (h *RequestAnalysisHandler) GetRequestBody(c *gin.Context) {
+	if h.getDB() == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics DB is not ready"})
+		return
+	}
 	requestID := c.Param("request_id")
 	if requestID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -236,7 +268,7 @@ func (h *RequestAnalysisHandler) GetRequestBody(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.db.GetRequestDetail(requestID)
+	detail, err := h.getDB().GetRequestDetail(requestID)
 	if err != nil {
 		logger.Error("Failed to get request detail",
 			zap.String("request_id", requestID),
@@ -263,6 +295,10 @@ func (h *RequestAnalysisHandler) GetRequestBody(c *gin.Context) {
 
 // GetErrorAnalytics возвращает аналитику по ошибкам запросов
 func (h *RequestAnalysisHandler) GetErrorAnalytics(c *gin.Context) {
+	if h.db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics DB is not ready"})
+		return
+	}
 	periodStr := c.DefaultQuery("period", "24h")
 
 	// Парсим период
@@ -275,7 +311,7 @@ func (h *RequestAnalysisHandler) GetErrorAnalytics(c *gin.Context) {
 	}
 
 	// Получаем все ошибки за период
-	details, err := h.db.GetRequestDetailsByError(1000, since) // большой лимит для аналитики
+	details, err := h.getDB().GetRequestDetailsByError(1000, since) // большой лимит для аналитики
 	if err != nil {
 		logger.Error("Failed to get error requests for analytics", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{

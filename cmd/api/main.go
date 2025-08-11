@@ -9,6 +9,7 @@ import (
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/statistics"
 	"runtime"
+	"time"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
-	// Инициализируем статистику
+	// Инициализируем статистику с ретраями в фоне, чтобы не падать при кратковременной недоступности БД
 	statsConfig := statistics.Config{
 		Host:     os.Getenv("POSTGRES_HOST"),
 		Port:     os.Getenv("POSTGRES_PORT"),
@@ -35,10 +36,28 @@ func main() {
 		Password: os.Getenv("POSTGRES_PASSWORD"),
 	}
 
-	if err := statistics.Initialize(statsConfig); err != nil {
-		logger.Fatal("Failed to initialize statistics", logger.Field("error", err))
-	}
-	logger.Info("Statistics initialized with PostgreSQL")
+    go func() {
+        backoff := time.Second
+        const maxBackoff = 60 * time.Second
+        for {
+            if err := statistics.InitializeOrRetry(statsConfig); err != nil {
+				logger.Warn(
+					"Statistics initialization failed; will retry",
+					logger.Field("error", err),
+					logger.Field("next_backoff", backoff.String()),
+				)
+				time.Sleep(backoff)
+				// Экспоненциальный рост с ограничением
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+			logger.Info("Statistics initialized with PostgreSQL")
+			return
+		}
+	}()
 
 	// Создаем PDF сервис
 	gotenbergURL := os.Getenv("GOTENBERG_API_URL")

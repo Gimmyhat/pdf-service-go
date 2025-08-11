@@ -24,6 +24,13 @@ func NewErrorHandler() *ErrorHandler {
 
 // GetErrors возвращает детальную информацию об ошибках
 func (h *ErrorHandler) GetErrors(c *gin.Context) {
+	if h.stats == nil {
+		h.stats = statistics.GetInstance()
+	}
+	if h.stats == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics subsystem is not ready"})
+		return
+	}
 	// Параметры запроса
 	limitStr := c.DefaultQuery("limit", "50")
 	periodStr := c.DefaultQuery("period", "24h")
@@ -108,6 +115,13 @@ func (h *ErrorHandler) GetErrorDetails(c *gin.Context) {
 
 // GetErrorStats возвращает статистику ошибок
 func (h *ErrorHandler) GetErrorStats(c *gin.Context) {
+	if h.stats == nil {
+		h.stats = statistics.GetInstance()
+	}
+	if h.stats == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics subsystem is not ready"})
+		return
+	}
 	periodStr := c.DefaultQuery("period", "24h")
 
 	var since time.Time

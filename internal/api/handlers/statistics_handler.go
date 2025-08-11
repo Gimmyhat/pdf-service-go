@@ -22,6 +22,14 @@ func NewStatisticsHandler() *StatisticsHandler {
 
 // GetStatistics возвращает текущую статистику
 func (h *StatisticsHandler) GetStatistics(c *gin.Context) {
+	// Лениво получаем актуальный инстанс (мог появиться позже из-за ретраев подключения)
+	if h.stats == nil {
+		h.stats = statistics.GetInstance()
+	}
+	if h.stats == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statistics subsystem is not ready"})
+		return
+	}
 	period := c.DefaultQuery("period", "all")
 
 	// Проверяем допустимость периода
