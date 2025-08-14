@@ -190,6 +190,7 @@ check-prod: check-storage
 
 # Универсальная команда деплоя
 deploy: check-env
+	@echo "[DEPRECATED] Raw kubectl deploy path is deprecated; prefer 'make helm-deploy' (see DEPRECATIONS.md)"
 	@echo "Applying PostgreSQL ConfigMap (idempotent)..."
 	kubectl create configmap nas-pdf-service-postgres-config \
 		--from-literal=POSTGRES_DB=pdf_service \

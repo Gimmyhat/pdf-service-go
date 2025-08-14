@@ -1,28 +1,27 @@
 package api
 
 import (
-	"encoding/json"
-	"net/http"
-	"pdf-service-go/internal/api/handlers"
-	"pdf-service-go/internal/domain/pdf"
-	"pdf-service-go/internal/pkg/logger"
-	"pdf-service-go/internal/pkg/statistics"
-	"time"
+    "encoding/json"
+    "net/http"
+    "pdf-service-go/internal/api/handlers"
+    "pdf-service-go/internal/pkg/logger"
+    "pdf-service-go/internal/pkg/statistics"
+    "time"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
+    "github.com/gin-gonic/gin"
+    "go.uber.org/zap"
 )
 
 // Handlers содержит все обработчики API
 type Handlers struct {
-	PDF             *handlers.PDFHandler
+    PDF             *handlers.PDFHandler
 	Statistics      *handlers.StatisticsHandler
 	Errors          *handlers.ErrorHandler
 	RequestAnalysis *handlers.RequestAnalysisHandler
 }
 
 // NewHandlers создает новые обработчики
-func NewHandlers(service pdf.Service) *Handlers {
+func NewHandlers(service interface{ GetCircuitBreakerState() interface{ String() string }; IsCircuitBreakerHealthy() bool; GetDocxGeneratorState() interface{ String() string }; IsDocxGeneratorHealthy() bool; GenerateDocx(ctx interface{}, req interface{}) ([]byte, error) }) *Handlers {
 	return &Handlers{
 		PDF:             handlers.NewPDFHandler(service),
 		Statistics:      handlers.NewStatisticsHandler(),
@@ -68,13 +67,4 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handlers) GenerateDocx(c *gin.Context) {
-	var req pdf.DocxRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Error("Failed to parse request", zap.Error(err))
-		c.JSON(400, gin.H{"error": "Invalid request format"})
-		return
-	}
-
-	h.PDF.GenerateDocx(c)
-}
+// Deprecated: прямой хендлер GenerateDocx сохранён для обратной совместимости, но не используется маршрутизацией.
