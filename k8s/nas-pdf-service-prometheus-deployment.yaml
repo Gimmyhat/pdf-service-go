@@ -109,7 +109,7 @@ spec:
       - name: registry-irk-rw
       containers:
       - name: nas-pdf-service-prometheus
-        image: registry.devops.rgf.local/prom/prometheus:latest
+        image: registry.devops.rgf.local/prom/prometheus:v2.51.2
         args:
         - "--config.file=/etc/prometheus/prometheus.yml"
         - "--storage.tsdb.path=/prometheus"

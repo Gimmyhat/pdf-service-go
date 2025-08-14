@@ -42,10 +42,10 @@ IMG_GRAFANA := $(REGISTRY_PULL)/grafana/grafana
 IMG_JAEGER := $(REGISTRY_PULL)/jaegertracing/all-in-one
 IMG_POSTGRES := $(REGISTRY_PULL)/library/postgres
 
-# Теги образов (по умолчанию pinned где нужно)
+# Теги образов (закреплены для воспроизводимости)
 TAG_GOTENBERG ?= 7.10
-TAG_PROMETHEUS ?= latest
-TAG_GRAFANA ?= latest
+TAG_PROMETHEUS ?= v2.51.2
+TAG_GRAFANA ?= 11.1.3
 TAG_JAEGER ?= 1.54
 TAG_POSTGRES ?= 15-alpine
 NAMESPACE = print-serv
