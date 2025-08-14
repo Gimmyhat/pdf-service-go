@@ -70,13 +70,16 @@ make deploy-local     # Запускает все сервисы в Docker Compo
 3. **Проверьте работу:**
 
 ```bash
-# Генерация PDF
+# Генерация PDF (локально)
 curl -X POST -H "Content-Type: application/json" \
   --data-binary "@test_data.json" \
   http://localhost:8080/api/v1/docx -o result.pdf
 
-# Генерация на проде
-curl -X POST -H "Content-Type: application/json" --data-binary "@test_data.json" http://172.27.239.2:31005/api/v1/docx -o result.pdf
+# Генерация на кластере
+# Сначала получите адрес сервиса:
+#   make get-service-url ENV=prod   # или ENV=test
+# Затем подставьте адрес сервиса вместо <SERVICE_URL>:
+#   curl -X POST -H "Content-Type: application/json" --data-binary "@test_data.json" <SERVICE_URL>/api/v1/docx -o result.pdf
 
 # Проверка системы отслеживания ошибок
 curl http://localhost:8080/health
@@ -184,17 +187,17 @@ make clear-stats ENV=test      # Очистка статистики (с под�
 - **Prometheus**: <http://localhost:9090>
 - **Jaeger UI**: <http://localhost:16686>
 
-### Продакшн (получите актуальные URL командой `make get-service-url ENV=prod`)
+### Продакшн
 
-- **Тестовый кластер**: <http://172.27.239.30:31005>
-- **Продакшн кластер**: <http://172.27.239.2:31005>
+- Получите актуальный URL и порт NodePort командой: `make get-service-url ENV=prod` (или `ENV=test`) и используйте выведенный адрес.
 
 ### 🆕 Полезные endpoints
 
-- Веб: `/dashboard` (Обзор/Статистика/Ошибки/Архив)
+- Веб: `/dashboard` (Обзор/Статистика/Ошибки/Архив) — рекомендуется
 - Ошибки: `GET /api/v1/errors`, `GET /api/v1/errors/stats`, `GET /api/v1/errors/:id`
 - Запросы: `GET /api/v1/requests/recent`, `POST /api/v1/requests/cleanup`, `GET /api/v1/requests/:id`, `GET /api/v1/requests/:id/body`
 - Тестовые: `GET /test-error`, `GET /test-timeout`
+- Устаревшие: `/stats`, `/errors`, `/generate-pdf` — см. `DEPRECATIONS.md`
 
 ## 📚 Документация
 

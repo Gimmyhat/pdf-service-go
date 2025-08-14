@@ -99,10 +99,10 @@ DOCKER_IMAGE = registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go
 ### Go Dependencies
 
 ```go
-github.com/gin-gonic/gin v1.10.0
+github.com/gin-gonic/gin v1.9.1
 github.com/lib/pq v1.10.9
-go.uber.org/zap v1.27.0
-go.opentelemetry.io/otel v1.28.0
+go.uber.org/zap v1.26.0
+go.opentelemetry.io/otel v1.34.0
 ```
 
 ### Python Dependencies
@@ -118,8 +118,8 @@ Jinja2==3.1.4
 - **Kubernetes**: 1.25+
 - **Helm**: 3.x
 - **PostgreSQL**: 15-alpine
-- **Prometheus**: latest
-- **Grafana**: latest
+- **Prometheus**: pinned (рекомендуется закреплять явные версии)
+- **Grafana**: pinned (рекомендуется закреплять явные версии)
 - **Jaeger**: 1.54
 - **Gotenberg**: 7.10
 
