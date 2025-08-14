@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-    "os"
-    "path/filepath"
 	"net/http"
+	"os"
+	"path/filepath"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/circuitbreaker"
 	"pdf-service-go/internal/pkg/errortracker"
@@ -83,18 +83,40 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 
 	// Время начала генерации DOCX
 	docxStartTime := time.Now()
-    pdfContent, err := h.service.GenerateDocx(c.Request.Context(), &req)
+	// Восстановим контекст и обогатим его путём к сохраненному payload
+	ctx := c.Request.Context()
+	if v, exists := c.Get("request_body_file_path"); exists {
+		if s, ok := v.(string); ok && s != "" {
+			ctx = context.WithValue(ctx, "request_body_file_path", s)
+		}
+	}
+	if v, exists := c.Get("request_id"); exists {
+		if s, ok := v.(string); ok && s != "" {
+			ctx = context.WithValue(ctx, "request_id", s)
+		}
+	}
+	pdfContent, err := h.service.GenerateDocx(ctx, &req)
 	docxDuration := time.Since(docxStartTime)
 
 	if err != nil {
 		status := h.determineErrorStatus(err)
 
 		// Отслеживаем ошибку с контекстом
-		errortracker.TrackError(c.Request.Context(), err,
+		payloadPath := ""
+		if vv, ok := ctx.Value("request_body_file_path").(string); ok {
+			payloadPath = vv
+		}
+		stage := "docx"
+		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
+			stage = "gotenberg"
+		}
+		errortracker.TrackError(ctx, err,
 			errortracker.WithComponent("pdf"),
 			errortracker.WithHTTPStatus(status),
 			errortracker.WithDuration(docxDuration),
 			errortracker.WithRequestDetails("pages", req.Pages),
+			errortracker.WithRequestDetails("stage", stage),
+			errortracker.WithRequestDetails("request_payload_path", payloadPath),
 		)
 
 		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
@@ -107,63 +129,74 @@ func (h *PDFHandler) GenerateDocx(c *gin.Context) {
 		return
 	}
 
-    // Успешная генерация
+	// Успешная генерация
 	h.TrackDocxGeneration(docxDuration, false)
 
-    // Сохраняем PDF в файл и обновляем статистику
-    resultPath, resultSize := savePDFResultToFile(c, pdfContent)
-    h.TrackPDFFile(resultSize)
+	// Сохраняем PDF в файл и обновляем статистику
+	// Если сервис положил путь к timings в контекст, протянем его в gin.Context для БД
+	if tp, ok := ctx.Value("timings_file_path").(string); ok && tp != "" {
+		c.Set("timings_file_path", tp)
+	}
+	resultPath, resultSize := savePDFResultToFile(c, pdfContent)
+	h.TrackPDFFile(resultSize)
 
 	totalDuration := time.Since(startTime)
 
 	// Добавляем заголовки с метриками времени
-    c.Header("X-Docx-Generation-Time", strconv.FormatFloat(docxDuration.Seconds(), 'f', 3, 64))
+	c.Header("X-Docx-Generation-Time", strconv.FormatFloat(docxDuration.Seconds(), 'f', 3, 64))
 	c.Header("X-PDF-Conversion-Time", strconv.FormatFloat(totalDuration.Seconds()-docxDuration.Seconds(), 'f', 3, 64))
 	c.Header("X-Total-Processing-Time", strconv.FormatFloat(totalDuration.Seconds(), 'f', 3, 64))
-    if resultPath != "" {
-        c.Header("X-Result-File-Path", resultPath)
-    }
+	if resultPath != "" {
+		c.Header("X-Result-File-Path", resultPath)
+	}
 
 	c.Data(http.StatusOK, "application/pdf", pdfContent)
 }
 
 // savePDFResultToFile сохраняет PDF на диск и, если есть request_id в контексте, обновляет запись о запросе
 func savePDFResultToFile(c *gin.Context, pdfContent []byte) (string, int64) {
-    baseDir := getArtifactsBaseDir()
-    outDir := filepath.Join(baseDir, "results")
-    if err := os.MkdirAll(outDir, 0o755); err != nil {
-        return "", int64(len(pdfContent))
-    }
-    requestIDAny, _ := c.Get("request_id")
-    requestID, _ := requestIDAny.(string)
-    if requestID == "" {
-        requestID = fmt.Sprintf("anon_%d", time.Now().UnixNano())
-    }
-    filename := filepath.Join(outDir, fmt.Sprintf("%s.pdf", requestID))
-    if err := os.WriteFile(filename, pdfContent, 0o644); err != nil {
-        return "", int64(len(pdfContent))
-    }
+	baseDir := getArtifactsBaseDir()
+	outDir := filepath.Join(baseDir, "results")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return "", int64(len(pdfContent))
+	}
+	requestIDAny, _ := c.Get("request_id")
+	requestID, _ := requestIDAny.(string)
+	if requestID == "" {
+		requestID = fmt.Sprintf("anon_%d", time.Now().UnixNano())
+	}
+	filename := filepath.Join(outDir, fmt.Sprintf("%s.pdf", requestID))
+	if err := os.WriteFile(filename, pdfContent, 0o644); err != nil {
+		return "", int64(len(pdfContent))
+	}
 
-    // Попробуем обновить запись request_details путями к файлам
-    if db := statistics.GetPostgresDB(); db != nil {
-        size := int64(len(pdfContent))
-        if err := db.UpdateResultFileInfo(requestID, filename, size); err != nil {
-            logger.Error("Failed to update result file info", zap.String("request_id", requestID), zap.Error(err))
-        }
-    }
+	// Попробуем обновить запись request_details путями к файлам
+	if db := statistics.GetPostgresDB(); db != nil {
+		size := int64(len(pdfContent))
+		// Попытаемся также записать timings, если Python сообщил путь
+		var timingsPath *string
+		if tpAny, ok := c.Get("timings_file_path"); ok {
+			if tp, ok2 := tpAny.(string); ok2 && tp != "" {
+				timingsPath = &tp
+			}
+		}
+		if err := db.UpdateResultFileInfoWithTimings(requestID, filename, size, timingsPath); err != nil {
+			logger.Error("Failed to update result file info", zap.String("request_id", requestID), zap.Error(err))
+		}
+	}
 
-    // Сохраним путь в контекст на будущее
-    c.Set("result_file_path", filename)
+	// Сохраним путь в контекст на будущее
+	c.Set("result_file_path", filename)
 
-    return filename, int64(len(pdfContent))
+	return filename, int64(len(pdfContent))
 }
 
 // getArtifactsBaseDir реиспользуем логику из middleware
 func getArtifactsBaseDir() string {
-    if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
-        return v
-    }
-    return "/app/data/artifacts"
+	if v := os.Getenv("ARTIFACTS_DIR"); v != "" {
+		return v
+	}
+	return "/app/data/artifacts"
 }
 
 func (h *PDFHandler) validateRequest(req *pdf.DocxRequest) error {

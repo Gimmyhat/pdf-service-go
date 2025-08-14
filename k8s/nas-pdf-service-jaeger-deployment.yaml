@@ -13,9 +13,11 @@ spec:
       labels:
         app: nas-jaeger
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: jaeger
-        image: dh-mirror.gitverse.ru/jaegertracing/all-in-one:1.54
+        image: registry.devops.rgf.local/jaegertracing/all-in-one:1.54
         ports:
         - containerPort: 16686
           name: ui

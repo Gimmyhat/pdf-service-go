@@ -114,6 +114,7 @@ data:
     ALTER TABLE request_details ADD COLUMN IF NOT EXISTS request_file_path TEXT;
     ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_file_path TEXT;
     ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_size_bytes BIGINT;
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS timings_file_path TEXT;
 
     CREATE TABLE IF NOT EXISTS error_logs (
         id SERIAL PRIMARY KEY,
@@ -183,9 +184,11 @@ spec:
       labels:
         app: nas-pdf-service-postgres
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service-postgres
-        image: dh-mirror.gitverse.ru/postgres:15-alpine
+        image: registry.devops.rgf.local/library/postgres:15-alpine
         ports:
         - containerPort: 5432
         envFrom:

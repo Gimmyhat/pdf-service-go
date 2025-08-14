@@ -13,6 +13,7 @@ import (
 
 	"pdf-service-go/internal/pkg/cache"
 	"pdf-service-go/internal/pkg/circuitbreaker"
+	ipdocxgen "pdf-service-go/internal/pkg/docxgen"
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/retry"
 	"pdf-service-go/internal/pkg/tracing"
@@ -86,7 +87,7 @@ type Generator struct {
 	config       Config
 	cb           *circuitbreaker.CircuitBreaker
 	cache        *cache.Cache
-	tempManager  *TempManager
+	tempManager  *ipdocxgen.TempManager
 	gotenbergURL string
 	retrier      *retry.Retrier
 }
@@ -137,7 +138,7 @@ func NewGenerator(scriptPath string) *Generator {
 		RetryBackoffFactor: float64(getEnvIntWithDefault("DOCX_RETRY_BACKOFF_FACTOR", 2)),
 	}
 
-	tempManager, err := NewTempManager(TempManagerConfig{
+	tempManager, err := ipdocxgen.NewTempManager(ipdocxgen.TempManagerConfig{
 		Dir:           os.TempDir(),
 		CleanupPeriod: getEnvDurationWithDefault("DOCX_TEMP_CLEANUP_INTERVAL", 1*time.Minute),
 		MaxDirSize:    1024 * 1024 * 1024, // 1GB по умолчанию
@@ -393,6 +394,6 @@ func (g *Generator) convertToPDF(_ context.Context, _ string) ([]byte, error) {
 }
 
 // GetTempManager возвращает менеджер временных файлов
-func (g *Generator) GetTempManager() *TempManager {
+func (g *Generator) GetTempManager() *ipdocxgen.TempManager {
 	return g.tempManager
 }

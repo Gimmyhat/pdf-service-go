@@ -5,9 +5,13 @@ global:
 
 # Настройки образа
 image:
-  repository: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go
+  repository: registry.devops.rgf.local/gimmyhat/pdf-service-go
   tag: latest
   pullPolicy: Always
+
+# Секреты для pull образов
+imagePullSecrets:
+  - name: registry-irk-rw
 
 # Настройки развертывания
 deployment:

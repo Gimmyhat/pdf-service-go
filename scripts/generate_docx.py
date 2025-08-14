@@ -11,6 +11,8 @@ import PyPDF2
 from docx import Document
 from docx.shared import Inches
 import re # Добавляем импорт модуля регулярных выражений
+import time
+import traceback
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -140,7 +142,7 @@ def process_dates(data):
             if 'informationDate' in item:
                 item['informationDate'] = format_date(item['informationDate'])
 
-def process_template(data, output_path):
+def process_template(data, output_path, timings=None):
     """Обработка шаблона и сохранение результата."""
     global TEMPLATE
     
@@ -157,8 +159,14 @@ def process_template(data, output_path):
             logger.info("Processing FINAL document with page count")
         
         # Обрабатываем даты и генерируем информацию о заявителе
+        t_pd_start = time.time()
         process_dates(data)
+        if timings is not None:
+            timings.append({"stage": "process_dates", "ms": round((time.time() - t_pd_start) * 1000, 2)})
+        t_ai_start = time.time()
         data['applicant_info'] = generate_applicant_info(data)
+        if timings is not None:
+            timings.append({"stage": "generate_applicant_info", "ms": round((time.time() - t_ai_start) * 1000, 2)})
         
         # Создаем укороченный ID без текста ЕФГИ
         if 'id' in data:
@@ -210,8 +218,17 @@ def process_template(data, output_path):
         
         try:
             # Рендерим документ
+            t_render_start = time.time()
             TEMPLATE.render(data)
+            render_ms = round((time.time() - t_render_start) * 1000, 2)
+            if timings is not None:
+                timings.append({"stage": "render", "ms": render_ms})
+
+            t_save_start = time.time()
             TEMPLATE.save(output_path)
+            save_ms = round((time.time() - t_save_start) * 1000, 2)
+            if timings is not None:
+                timings.append({"stage": "save", "ms": save_ms})
             logger.info("Document generated successfully")
             return True
         except Exception as e:
@@ -232,16 +249,42 @@ def main():
 
     try:
         # Инициализируем шаблон при старте
+        t0 = time.time()
         init_app(template_path)
+        init_ms = round((time.time() - t0) * 1000, 2)
 
         # Читаем данные
+        t_read_start = time.time()
         with open(data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        read_ms = round((time.time() - t_read_start) * 1000, 2)
     except Exception as e:
         logger.error("Error during initialization: %s", e)
         sys.exit(1)
 
-    if not process_template(data, output_path):
+    timings = []
+    timings.append({"stage": "init_app", "ms": init_ms})
+    timings.append({"stage": "read_input", "ms": read_ms})
+
+    t_proc_start = time.time()
+    ok = process_template(data, output_path, timings)
+    total_ms = round((time.time() - t0) * 1000, 2)
+
+    # Пишем тайминги в stdout и в файл рядом с выходным DOCX
+    try:
+        summary = {
+            "total_ms": total_ms,
+            "stages": timings
+        }
+        logger.info("DOCX generation timings: %s", json.dumps(summary, ensure_ascii=False))
+        timings_path = output_path + ".timings.json"
+        with open(timings_path, 'w', encoding='utf-8') as tf:
+            json.dump(summary, tf, ensure_ascii=False, indent=2)
+        print(f"TIMINGS_FILE={timings_path}")
+    except Exception:
+        traceback.print_exc()
+
+    if not ok:
         sys.exit(1)
 
 if __name__ == "__main__":

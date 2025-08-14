@@ -45,6 +45,9 @@ function setupTabHandlers() {
                     initArchiveInfiniteScroll();
                     refreshArchive();
                     break;
+                case '#payloads':
+                    refreshProblemPayloads();
+                    break;
             }
         });
     });
@@ -69,6 +72,9 @@ function refreshAllData() {
             break;
         case '#archive':
             refreshArchive();
+            break;
+        case '#payloads':
+            refreshProblemPayloads();
             break;
         case '#overview':
         default:
@@ -237,17 +243,26 @@ async function createOverviewChart() {
         const requestsData = [];
         const errorsData = [];
         
+        // Данные API отдаются по часам в UTC. Конвертируем к локальному времени,
+        // чтобы подписи и значения совпадали с ожиданиями пользователя.
+        const timezoneOffsetHours = new Date().getTimezoneOffset() / 60; // например, для МСК: -3
+        
         // Используем реальные данные по часам из API
         const apiHourData = stats.requests?.by_hour_of_day || {};
         
         for (let i = 23; i >= 0; i--) {
             const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-            const hour = time.getHours().toString().padStart(2, '0');
+            const localHour = time.getHours();
+            const hour = localHour.toString().padStart(2, '0');
             
             labels.push(time.toLocaleTimeString('ru', { hour: '2-digit' }));
             
+            // Преобразуем локальный час в соответствующий ключ UTC из API
+            const utcHour = (localHour + timezoneOffsetHours + 24) % 24;
+            const hourKey = utcHour.toString().padStart(2, '0');
+            
             // Используем реальные данные или 0, если данных нет
-            const hourRequests = apiHourData[hour] || 0;
+            const hourRequests = apiHourData[hourKey] || 0;
             requestsData.push(hourRequests);
             
             // Пока нет почасовых данных по ошибкам, используем пропорцию
@@ -660,7 +675,10 @@ async function refreshErrorData() {
         displayErrorStats(stats, requestErrors);
         
         const oldErrors = errors.summary?.recent_errors || [];
-        const newErrors = requestErrors.error_requests || [];
+        const newErrors = (requestErrors.error_requests || []).map(e => {
+            // Протянем timings в список, если бекенд уже вернёт поле
+            return e;
+        });
         
         console.log('Old errors:', oldErrors.length, 'New errors:', newErrors.length);
         
@@ -873,6 +891,7 @@ function generateRequestErrorCard(error) {
     const timeAgo = new Date(error.timestamp).toLocaleString('ru');
     const duration = error.duration_ns ? (error.duration_ns / 1000000).toFixed(2) + 'ms' : 'N/A';
     
+    const timingsLink = error.timings_file_path ? ` <a href="${String(error.timings_file_path).replace(/\\/g,'/')}" target="_blank">timings</a>` : '';
     return `
         <div class="error-card card ${error.error_category}" style="margin-bottom: 1rem;">
             <div class="card-body">
@@ -908,6 +927,7 @@ function generateRequestErrorCard(error) {
                         <i class="bi bi-file-text"></i> Показать тело запроса
                     </button>
                     ${error.body_size_bytes ? `<small class="text-muted ms-2">(${error.body_size_bytes} bytes)</small>` : ''}
+                    ${timingsLink}
                 </div>
                 
                 ${error.headers ? `
@@ -1215,7 +1235,8 @@ function renderArchiveTable(items) {
         const bodySize = typeof it.body_size_bytes === 'number' ? formatBytes(it.body_size_bytes) : '—';
         const statusBadge = it.success ? '<span class="badge bg-success">OK</span>' : `<span class="badge bg-danger">${it.http_status ?? 'ERR'}</span>`;
         const reqLink = it.request_file_path ? `<a href="${it.request_file_path}" target="_blank">json</a>` : '—';
-        const resLink = it.result_file_path ? `<a href="${it.result_file_path}" target="_blank">pdf</a>${(typeof it.result_size_bytes === 'number') ? ` <small class="text-muted">(${formatBytes(it.result_size_bytes)})</small>` : ''}` : '—';
+        const timings = it.timings_file_path ? ` <a href="${it.timings_file_path.replace(/\\/g,'/')}" target="_blank">timings</a>` : '';
+        const resLink = it.result_file_path ? `<a href="${it.result_file_path}" target="_blank">pdf</a>${(typeof it.result_size_bytes === 'number') ? ` <small class="text-muted">(${formatBytes(it.result_size_bytes)})</small>` : ''}${timings}` : (it.timings_file_path ? timings : '—');
         const viewBtn = it.request_id ? `<button class="btn btn-sm btn-outline-primary" onclick="showRequestBodyFromApi('${it.request_id}')"><i class="bi bi-eye"></i></button>` : '';
         return `<tr>
             <td>${ts}</td>
@@ -1247,3 +1268,66 @@ async function cleanupArchive() {
 
 window.refreshArchive = refreshArchive;
 window.cleanupArchive = cleanupArchive;
+
+// ===== Проблемные payload'ы =====
+let payloadsData = [];
+
+async function refreshProblemPayloads() {
+    try {
+        const period = document.getElementById('payloadsPeriod')?.value || '24h';
+        const category = document.getElementById('payloadsCategory')?.value || '';
+        let url = `/api/v1/requests/error?period=${period}&limit=100`;
+        if (category) url += `&category=${encodeURIComponent(category)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        payloadsData = data.error_requests || [];
+        renderProblemPayloads(payloadsData);
+    } catch (e) {
+        console.error('Error loading problem payloads:', e);
+        const tbody = document.querySelector('#payloadsTable tbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Ошибка загрузки</td></tr>`;
+    }
+}
+
+function filterProblemPayloads() {
+    const q = (document.getElementById('payloadsSearch')?.value || '').toLowerCase();
+    const filtered = payloadsData.filter(x => {
+        const id = (x.request_id || '').toLowerCase();
+        const path = (x.path || '').toLowerCase();
+        const status = String(x.http_status || '').toLowerCase();
+        return id.includes(q) || path.includes(q) || status.includes(q);
+    });
+    renderProblemPayloads(filtered);
+}
+
+function renderProblemPayloads(items) {
+    const tbody = document.querySelector('#payloadsTable tbody');
+    if (!tbody) return;
+    if (!items || items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">Нет данных</td></tr>`;
+        return;
+    }
+    const rows = items.map(it => {
+        const ts = it.timestamp ? new Date(it.timestamp).toLocaleString('ru') : '—';
+        const dur = typeof it.duration_ns === 'number' ? (it.duration_ns / 1e6).toFixed(1) + 'ms' : '—';
+        const bodySize = typeof it.body_size_bytes === 'number' ? formatBytes(it.body_size_bytes) : '—';
+        const timingsLink = it.timings_file_path ? ` <a href="${it.timings_file_path.replace(/\\/g,'/')}" target="_blank">timings</a>` : '';
+        const payloadLink = it.request_file_path ? `<a href="${it.request_file_path}" target="_blank">json</a>${timingsLink}` : (it.timings_file_path ? timingsLink : '—');
+        const viewBtn = it.request_id ? `<button class="btn btn-sm btn-outline-primary" onclick="showRequestBodyFromApi('${it.request_id}')"><i class="bi bi-eye"></i></button>` : '';
+        return `<tr>
+            <td>${ts}</td>
+            <td><code>${it.request_id ?? '—'}</code></td>
+            <td><code>${it.path ?? '—'}</code></td>
+            <td>${it.http_status ?? '—'}</td>
+            <td>${dur}</td>
+            <td>${bodySize}</td>
+            <td>${payloadLink}</td>
+            <td class="text-end">${viewBtn}</td>
+        </tr>`;
+    }).join('');
+    tbody.innerHTML = rows;
+}
+
+window.refreshProblemPayloads = refreshProblemPayloads;
+window.filterProblemPayloads = filterProblemPayloads;

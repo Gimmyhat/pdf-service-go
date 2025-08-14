@@ -23,9 +23,11 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service
-        image: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:latest
+        image: registry.devops.rgf.local/gimmyhat/pdf-service-go:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

@@ -1,5 +1,5 @@
 .PHONY: build test lint tidy clean \
-        docker-build docker-push docker-push-latest new-version build-local \
+        docker-build docker-push docker-push-latest dockerhub-push dockerhub-push-latest new-version new-version-hub build-local \
         check-env get-version status logs \
         check-storage check-test check-prod check-grafana check-prometheus check-jaeger test-error-system \
         deploy deploy-local deploy-storage force-update check-mirror get-service-url \
@@ -12,9 +12,42 @@
 # Основные переменные
 APP_NAME = pdf-service-go
 DOCKER_REPO = gimmyhat
-DOCKER_MIRROR = dh-mirror.gitverse.ru
+# Реестры для push/pull (поддержка разделения RW/RO)
+REGISTRY_PUSH ?= registry-irk-rw.devops.rgf.local
+REGISTRY_PULL ?= registry.devops.rgf.local
+
+# Профиль источника образов (mirror | devops | nexus)
+# Используется для быстрого переключения всех образов без правки YAML
+REGISTRY_PROFILE ?= devops
+ifeq ($(REGISTRY_PROFILE),mirror)
+  REGISTRY_PULL := dh-mirror.gitverse.ru
+else ifeq ($(REGISTRY_PROFILE),devops)
+  REGISTRY_PULL := registry.devops.rgf.local
+else ifeq ($(REGISTRY_PROFILE),nexus)
+  REGISTRY_PULL := registry-irk-rw.devops.rgf.local
+endif
+# Обратная совместимость (устарело): DOCKER_MIRROR/DOCKER_IMAGE
+DOCKER_MIRROR = $(REGISTRY_PULL)
 DOCKER_HUB_IMAGE = $(DOCKER_REPO)/$(APP_NAME)
 DOCKER_IMAGE = $(DOCKER_MIRROR)/$(DOCKER_REPO)/$(APP_NAME)
+# Явные имена образов
+DOCKER_IMAGE_PUSH = $(REGISTRY_PUSH)/$(DOCKER_REPO)/$(APP_NAME)
+DOCKER_IMAGE_PULL = $(REGISTRY_PULL)/$(DOCKER_REPO)/$(APP_NAME)
+
+# Образы сервисов (формируются из REGISTRY_PULL)
+IMG_PDF := $(REGISTRY_PULL)/$(DOCKER_REPO)/$(APP_NAME)
+IMG_GOTENBERG := $(REGISTRY_PULL)/gotenberg/gotenberg
+IMG_PROMETHEUS := $(REGISTRY_PULL)/prom/prometheus
+IMG_GRAFANA := $(REGISTRY_PULL)/grafana/grafana
+IMG_JAEGER := $(REGISTRY_PULL)/jaegertracing/all-in-one
+IMG_POSTGRES := $(REGISTRY_PULL)/library/postgres
+
+# Теги образов (по умолчанию pinned где нужно)
+TAG_GOTENBERG ?= 7.10
+TAG_PROMETHEUS ?= latest
+TAG_GRAFANA ?= latest
+TAG_JAEGER ?= 1.54
+TAG_POSTGRES ?= 15-alpine
 NAMESPACE = print-serv
 
 # Автоматическая генерация версии в формате YY.MM.DD.HHMM
@@ -54,14 +87,12 @@ clean:
 # ============================================================================
 
 docker-build:
-	docker build -t $(DOCKER_IMAGE):$(VERSION) .
+	docker build -t $(DOCKER_IMAGE_PUSH):$(VERSION) .
 
 docker-push:
-	@echo "Pushing to Docker Hub ($(DOCKER_HUB_IMAGE):$(VERSION))..."
-	docker tag $(DOCKER_IMAGE):$(VERSION) $(DOCKER_HUB_IMAGE):$(VERSION)
-	docker push $(DOCKER_HUB_IMAGE):$(VERSION)
-	@echo "Successfully pushed to Docker Hub"
-	@echo "Note: Russian mirror ($(DOCKER_MIRROR)) will sync automatically"
+	@echo "Pushing to Nexus ($(DOCKER_IMAGE_PUSH):$(VERSION))..."
+	docker push $(DOCKER_IMAGE_PUSH):$(VERSION)
+	@echo "Successfully pushed to Nexus registry $(DOCKER_MIRROR)"
 
 build-local:
 	@echo "Building Docker image for local development..."
@@ -78,10 +109,34 @@ new-version:
 	@echo "New version $(NEW_VERSION) has been built and pushed"
 	@echo "Both versioned and latest tags have been updated"
 
+# То же самое, но с дополнительной публикацией в Docker Hub
+new-version-hub:
+	@echo "Building new version (with Docker Hub): $(NEW_VERSION)"
+	$(MAKE) docker-build VERSION=$(NEW_VERSION)
+	$(MAKE) docker-push VERSION=$(NEW_VERSION)
+	$(MAKE) docker-push-latest VERSION=$(NEW_VERSION)
+	$(MAKE) dockerhub-push VERSION=$(NEW_VERSION)
+	$(MAKE) dockerhub-push-latest VERSION=$(NEW_VERSION)
+	@powershell -Command "Set-Content -Path 'current_version.txt' -Value '$(NEW_VERSION)' -NoNewline"
+	@echo "New version $(NEW_VERSION) has been built and pushed to Nexus and Docker Hub"
+
 # Push образа как latest (для обновления зеркала)
 docker-push-latest:
-	@echo "Tagging and pushing as latest..."
-	docker tag $(DOCKER_IMAGE):$(VERSION) $(DOCKER_HUB_IMAGE):latest
+	@echo "Tagging and pushing as latest to Nexus..."
+	docker tag $(DOCKER_IMAGE_PUSH):$(VERSION) $(DOCKER_IMAGE_PUSH):latest
+	docker push $(DOCKER_IMAGE_PUSH):latest
+	@echo "Latest tag updated in Nexus"
+
+# Push образа в Docker Hub (опционально, по уникальным тегам)
+dockerhub-push:
+	@echo "Tagging and pushing to Docker Hub ($(DOCKER_HUB_IMAGE):$(VERSION))..."
+	docker tag $(DOCKER_IMAGE_PUSH):$(VERSION) $(DOCKER_HUB_IMAGE):$(VERSION)
+	docker push $(DOCKER_HUB_IMAGE):$(VERSION)
+	@echo "Successfully pushed to Docker Hub"
+
+dockerhub-push-latest:
+	@echo "Tagging and pushing latest to Docker Hub..."
+	docker tag $(DOCKER_IMAGE_PUSH):$(VERSION) $(DOCKER_HUB_IMAGE):latest
 	docker push $(DOCKER_HUB_IMAGE):latest
 	@echo "Latest tag updated in Docker Hub"
 
@@ -153,7 +208,7 @@ deploy: check-env
 	@echo "Applying DB migrations (init.sql) to existing database..."
 	@powershell -Command "$${POD} = (kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service-postgres -o jsonpath='{.items[0].metadata.name}'); if (-not $${POD}) { Write-Host 'Postgres pod not found'; exit 1 }; kubectl exec -n $(NAMESPACE) $${POD} -- psql -U pdf_service -d pdf_service -f /docker-entrypoint-initdb.d/init.sql | Out-Null; Write-Host 'DB migrations applied'"
 	@echo "Deploying main service..."
-	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim(); Write-Host \"Using version from current_version.txt: $$DEPLOY_VERSION\" } else { Write-Host 'Error: No version specified and no current_version.txt found. Please run ''make new-version'' first or specify VERSION.'; exit 1 } } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; if ('$(ENV)' -eq 'prod') { if ($$env:AUTO_APPROVE -eq 'y') { Write-Host 'AUTO_APPROVE=y detected: skipping interactive confirmation for production deploy.' } else { $$confirm = Read-Host -Prompt 'Are you sure you want to deploy to production? (y/N)'; if ($$confirm -ne 'y') { Write-Host 'Deployment cancelled.'; exit 1 } } }; kubectl config use-context $(CONTEXT); Write-Host 'Applying all configurations...'; kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); kubectl create configmap nas-pdf-service-templates --from-file=template.docx=internal/domain/pdf/templates/template.docx -n $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -; kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n $(NAMESPACE); Write-Host 'Updating deployment image...'; kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); Write-Host 'Restarting deployments...'; kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); kubectl rollout restart deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); kubectl rollout restart deployment/nas-pdf-service-prometheus -n $(NAMESPACE); Write-Host 'Waiting for rollouts to complete...'; kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); kubectl rollout status deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); kubectl rollout status deployment/nas-pdf-service-prometheus -n $(NAMESPACE); Write-Host 'Deployment to $(ENV) completed successfully'; Write-Host \"Use 'make status ENV=$(ENV)' to check deployment status\"; Write-Host \"Use 'make logs ENV=$(ENV)' to view logs\""
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { $$DEPLOY_VERSION = 'latest'; Write-Host 'Using latest tag' } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; if ('$(ENV)' -eq 'prod') { if ($$env:AUTO_APPROVE -eq 'y') { Write-Host 'AUTO_APPROVE=y detected: skipping interactive confirmation for production deploy.' } else { $$confirm = Read-Host -Prompt 'Are you sure you want to deploy to production? (y/N)'; if ($$confirm -ne 'y') { Write-Host 'Deployment cancelled.'; exit 1 } } }; kubectl config use-context $(CONTEXT); Write-Host 'Applying all configurations...'; kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n $(NAMESPACE); kubectl create configmap nas-pdf-service-templates --from-file=template.docx=internal/domain/pdf/templates/template.docx -n $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -; kubectl apply -f k8s/nas-pdf-service-storage.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-prometheus-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n $(NAMESPACE); kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n $(NAMESPACE); Write-Host 'Updating deployment images...'; kubectl set image deployment/nas-pdf-service nas-pdf-service=$(IMG_PDF):$$DEPLOY_VERSION -n $(NAMESPACE); kubectl set image deployment/nas-pdf-service-gotenberg nas-pdf-service-gotenberg=$(IMG_GOTENBERG):$(TAG_GOTENBERG) -n $(NAMESPACE); kubectl set image deployment/nas-pdf-service-prometheus nas-pdf-service-prometheus=$(IMG_PROMETHEUS):$(TAG_PROMETHEUS) -n $(NAMESPACE); Write-Host 'Restarting deployments...'; kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); kubectl rollout restart deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); kubectl rollout restart deployment/nas-pdf-service-prometheus -n $(NAMESPACE); Write-Host 'Waiting for rollouts to complete...'; kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); kubectl rollout status deployment/nas-pdf-service-gotenberg -n $(NAMESPACE); kubectl rollout status deployment/nas-pdf-service-prometheus -n $(NAMESPACE); Write-Host 'Deployment to $(ENV) completed successfully'; Write-Host \"Use 'make status ENV=$(ENV)' to check deployment status\"; Write-Host \"Use 'make logs ENV=$(ENV)' to view logs\""
 
 # Деплой локально через docker-compose
 deploy-local:
@@ -339,7 +394,7 @@ update-template:
 # Обновление зеркала во всех файлах
 update-mirror:
 	@echo "Current mirror: $(DOCKER_MIRROR)"
-	@powershell -Command "if ('$(NEW_MIRROR)' -eq '') { Write-Host 'Error: Please specify NEW_MIRROR variable'; Write-Host 'Example: make update-mirror NEW_MIRROR=new-mirror.example.com'; exit 1 }; Write-Host 'Updating mirror from $(DOCKER_MIRROR) to $(NEW_MIRROR)...'; $$files = @('k8s/*.yaml', 'helm/pdf-service/values.yaml', '.github/workflows/*.yaml'); foreach ($$pattern in $$files) { Get-ChildItem $$pattern -ErrorAction SilentlyContinue | ForEach-Object { $$content = Get-Content $$_.FullName -Raw; if ($$content -match '$(DOCKER_MIRROR)') { Write-Host \"Updating: $$($_.Name)\"; $$newContent = $$content -replace '$(DOCKER_MIRROR)', '$(NEW_MIRROR)'; Set-Content -Path $$_.FullName -Value $$newContent -NoNewline } } }; Write-Host 'Updating Makefile...'; $$makefileContent = Get-Content 'Makefile' -Raw; $$newMakefileContent = $$makefileContent -replace 'DOCKER_MIRROR = $(DOCKER_MIRROR)', \"DOCKER_MIRROR = $(NEW_MIRROR)\"; Set-Content -Path 'Makefile' -Value $$newMakefileContent -NoNewline; Write-Host 'Mirror update completed. New mirror: $(NEW_MIRROR)'"
+	@powershell -Command "if ('$(NEW_MIRROR)' -eq '') { Write-Host 'Error: Please specify NEW_MIRROR variable'; Write-Host 'Example: make update-mirror NEW_MIRROR=registry.example.com'; exit 1 }; Write-Host 'Updating mirror from $(DOCKER_MIRROR) to $(NEW_MIRROR)...'; $$files = @('k8s/*.yaml', 'helm/pdf-service/values.yaml', '.github/workflows/*.yaml'); foreach ($$pattern in $$files) { Get-ChildItem $$pattern -ErrorAction SilentlyContinue | ForEach-Object { $$content = Get-Content $$_.FullName -Raw; if ($$content -match '$(DOCKER_MIRROR)') { Write-Host \"Updating: $$($_.Name)\"; $$newContent = $$content -replace '$(DOCKER_MIRROR)', '$(NEW_MIRROR)'; Set-Content -Path $$_.FullName -Value $$newContent -NoNewline } } }; Write-Host 'Updating Makefile...'; $$makefileContent = Get-Content 'Makefile' -Raw; $$newMakefileContent = $$makefileContent -replace 'REGISTRY_PULL ?= $(REGISTRY_PULL)', \"REGISTRY_PULL ?= $(NEW_MIRROR)\"; Set-Content -Path 'Makefile' -Value $$newMakefileContent -NoNewline; Write-Host 'Mirror update completed. New mirror: $(NEW_MIRROR)'"
 
 # Показать все файлы использующие зеркало
 show-mirror-usage:
@@ -355,7 +410,23 @@ force-update: check-env
 check-mirror: check-env
 	@echo "Checking if mirror is synchronized..."
 	kubectl config use-context $(CONTEXT)
-	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim() } else { $$DEPLOY_VERSION = 'latest' } }; Write-Host \"Checking image: $(DOCKER_IMAGE):$$DEPLOY_VERSION\"; $$pod = kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service -o jsonpath='{.items[0].metadata.name}'; if ($$pod) { Write-Host \"Current pod: $$pod\"; kubectl describe pod $$pod -n $(NAMESPACE) | findstr 'Image:' } else { Write-Host 'No pods found' }"
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim() } else { $$DEPLOY_VERSION = 'latest' } }; Write-Host \"Profile: $(REGISTRY_PROFILE)\"; Write-Host \"Images: PDF=$(IMG_PDF):$$DEPLOY_VERSION, GOTENBERG=$(IMG_GOTENBERG):$(TAG_GOTENBERG), PROM=$(IMG_PROMETHEUS):$(TAG_PROMETHEUS), GRAFANA=$(IMG_GRAFANA):$(TAG_GRAFANA), JAEGER=$(IMG_JAEGER):$(TAG_JAEGER), POSTGRES=$(IMG_POSTGRES):$(TAG_POSTGRES)\"; $$pod = kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service -o jsonpath='{.items[0].metadata.name}'; if ($$pod) { Write-Host \"Current pod: $$pod\"; kubectl describe pod $$pod -n $(NAMESPACE) | findstr 'Image:' } else { Write-Host 'No pods found' }"
+
+# =========================================================================
+# Аутентификация и секреты для Nexus
+# =========================================================================
+
+# Вход в реестр Nexus (используйте переменные окружения NEXUS_USERNAME/NEXUS_PASSWORD)
+docker-login-nexus:
+	@powershell -Command "if ([string]::IsNullOrEmpty('$(NEXUS_USERNAME)') -or [string]::IsNullOrEmpty('$(NEXUS_PASSWORD)')) { Write-Host 'Error: please provide NEXUS_USERNAME and NEXUS_PASSWORD'; Write-Host 'Example: NEXUS_USERNAME=tech_irk NEXUS_PASSWORD=*** make docker-login-nexus'; exit 1 }; cmd /c \"echo $(NEXUS_PASSWORD)^| docker login $(REGISTRY_PUSH) -u $(NEXUS_USERNAME) --password-stdin\""
+
+# Вход в pull‑реестр (DevOps), если требуются push-права или проверка доступа
+docker-login-devops:
+	@powershell -Command "if ([string]::IsNullOrEmpty('$(NEXUS_USERNAME)') -or [string]::IsNullOrEmpty('$(NEXUS_PASSWORD)')) { Write-Host 'Error: please provide NEXUS_USERNAME and NEXUS_PASSWORD'; Write-Host 'Example: NEXUS_USERNAME=tech_irk NEXUS_PASSWORD=*** make docker-login-devops'; exit 1 }; cmd /c \"echo $(NEXUS_PASSWORD)^| docker login $(REGISTRY_PULL) -u $(NEXUS_USERNAME) --password-stdin\""
+
+# Создание/обновление imagePullSecret в namespace $(NAMESPACE)
+create-nexus-pull-secret: check-env
+	@powershell -Command "if ([string]::IsNullOrEmpty('$(NEXUS_USERNAME)') -or [string]::IsNullOrEmpty('$(NEXUS_PASSWORD)')) { Write-Host 'Error: please provide NEXUS_USERNAME and NEXUS_PASSWORD'; Write-Host 'Example: NEXUS_USERNAME=tech_irk NEXUS_PASSWORD=*** make create-nexus-pull-secret ENV=test'; exit 1 }; kubectl config use-context $(CONTEXT); kubectl create secret docker-registry registry-irk-rw --docker-server=$(DOCKER_MIRROR) --docker-username=$(NEXUS_USERNAME) --docker-password=$(NEXUS_PASSWORD) -n $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -"
 
 # Получение URL сервиса
 get-service-url: check-env
@@ -367,3 +438,18 @@ get-service-url: check-env
 migrate-db: check-env
 	@echo "Applying DB migrations (init.sql) to $(ENV) environment..."
 	@powershell -Command "$${POD} = (kubectl get pods -n $(NAMESPACE) -l app=nas-pdf-service-postgres -o jsonpath='{.items[0].metadata.name}'); if (-not $${POD}) { Write-Host 'Postgres pod not found'; exit 1 }; kubectl exec -n $(NAMESPACE) $${POD} -- psql -U pdf_service -d pdf_service -f /docker-entrypoint-initdb.d/init.sql | Out-Null; Write-Host 'DB migrations applied'"
+
+# =========================================================================
+# Установка CA для Nexus реестра на ноды (через DaemonSet)
+# =========================================================================
+
+# Установить DaemonSet, который положит ca.crt и hosts.toml на каждую ноду
+install-registry-ca:
+	kubectl apply -f k8s/registry-ca-installer.yaml
+	@echo "Applied registry CA installer DaemonSet in kube-system."
+	@echo "Next on each node: systemctl restart containerd (или docker), затем 'make uninstall-registry-ca'"
+
+# Удалить DaemonSet
+uninstall-registry-ca:
+	kubectl delete -f k8s/registry-ca-installer.yaml --ignore-not-found
+	@echo "Removed registry CA installer DaemonSet."

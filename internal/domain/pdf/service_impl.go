@@ -15,6 +15,9 @@ import (
 	"pdf-service-go/internal/pkg/logger"
 	"pdf-service-go/internal/pkg/metrics"
 	"pdf-service-go/internal/pkg/statistics"
+	"pdf-service-go/internal/pkg/tracing"
+
+	"go.opentelemetry.io/otel/codes"
 
 	"go.uber.org/zap"
 )
@@ -29,9 +32,13 @@ type StatsHandler struct {
 }
 
 func (h *StatsHandler) TrackGotenbergRequest(duration time.Duration, hasError bool, isHealthCheck bool) {
-	if !isHealthCheck {
-		h.stats.TrackGotenberg(duration, hasError)
+	if isHealthCheck {
+		return
 	}
+	if h == nil || h.stats == nil {
+		return
+	}
+	_ = h.stats.TrackGotenberg(duration, hasError)
 }
 
 func NewService(gotenbergURL string) Service {
@@ -93,6 +100,7 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	}
 
 	// Генерация документа в два этапа для корректного подсчета страниц
+	ctxDocx, spanDocx := tracing.StartSpan(ctx, "docx.generate")
 	log.Info("Starting two-phase document generation for accurate page count")
 
 	// Этап 1: Создание черновика документа с подсчетом страниц
@@ -193,24 +201,50 @@ func (s *ServiceImpl) GenerateDocx(ctx context.Context, req *DocxRequest) ([]byt
 	// Генерируем финальный DOCX
 	log.Info("Starting final DOCX generation", zap.Int("pages", req.Pages))
 	docxStart := time.Now()
-	if err := s.docxGenerator.Generate(ctx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
+	if err := s.docxGenerator.Generate(ctxDocx, templatePath, dataFile.Name(), docxFile.Name()); err != nil {
 		log.Error("Failed to generate DOCX", zap.Error(err))
+		tracing.RecordError(ctxDocx, err)
+		tracing.SetStatus(ctxDocx, codes.Error, "docx generation failed")
+		spanDocx.End()
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
+		// Пороговый алерт: если docxGenerationTime превысит 60s (в ветке ошибки оцениваем elapsed)
+		if time.Since(docxStart) > 60*time.Second {
+			logger.Log.Warn("Docx generation exceeded threshold", zap.Float64("seconds", time.Since(docxStart).Seconds()))
+		}
 		return nil, fmt.Errorf("failed to generate DOCX: %w", err)
 	}
 	docxGenerationTime = time.Since(docxStart)
+	if docxGenerationTime > 60*time.Second {
+		logger.Log.Warn("Docx generation exceeded threshold", zap.Float64("seconds", docxGenerationTime.Seconds()))
+	}
+	spanDocx.End()
 
 	// Конвертируем DOCX в PDF через Gotenberg
 	log.Info("Starting PDF conversion with Gotenberg")
+	ctxPDF, spanPDF := tracing.StartSpan(ctx, "gotenberg.convert")
 	pdfStart := time.Now()
 	pdfContent, err := s.gotenbergClient.ConvertDocxToPDF(docxFile.Name())
 	pdfConversionTime = time.Since(pdfStart)
+	if pdfConversionTime > 60*time.Second {
+		logger.Log.Warn("PDF conversion exceeded threshold", zap.Float64("seconds", pdfConversionTime.Seconds()))
+	}
 
 	if err != nil {
 		log.Error("Failed to convert to PDF", zap.Error(err))
+		tracing.RecordError(ctxPDF, err)
+		tracing.SetStatus(ctxPDF, codes.Error, "pdf conversion failed")
+		spanPDF.End()
+
+		// После успешной генерации попробуем найти timings json рядом с docx и сохранить путь в контекст для последующего апдейта БД
+		timingsPath := docxFile.Name() + ".timings.json"
+		if _, statErr := os.Stat(timingsPath); statErr == nil {
+			// Пробросим путь вверх по контексту
+			ctx = context.WithValue(ctx, "timings_file_path", timingsPath)
+		}
 		metrics.RequestsTotal.WithLabelValues("error").Inc()
 		return nil, fmt.Errorf("failed to convert to PDF: %w", err)
 	}
+	spanPDF.End()
 
 	// После получения ответа от Gotenberg
 	log.Info("PDF conversion completed",

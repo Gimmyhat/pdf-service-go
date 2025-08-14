@@ -61,6 +61,16 @@ func (et *ErrorTracker) TrackError(ctx context.Context, err error, opts ...Error
 		errorDetails.Severity = statistics.DetermineSeverity(errorDetails.ErrorType, errorDetails.HTTPStatus)
 	}
 
+	// Пороговые алерты по stage-timing (если в контексте есть timings файл — попробуем прочитать)
+	// Лёгкая эвристика: не читаем файл, а ожидаем, что upstream уже добавит атрибуты при необходимости.
+	// Здесь добавим только маркеры в RequestDetails для визуализации.
+	if v := getFromContext(ctx, "stage_name"); v != "" {
+		if errorDetails.RequestDetails == nil {
+			errorDetails.RequestDetails = map[string]interface{}{}
+		}
+		errorDetails.RequestDetails["stage"] = v
+	}
+
 	// Записываем в базу данных
 	if logErr := et.stats.LogError(errorDetails); logErr != nil {
 		// Если не удалось записать в БД, хотя бы логируем в консоль
@@ -104,6 +114,11 @@ func (et *ErrorTracker) extractContextInfo(ctx context.Context, details *statist
 	// Дополнительная информация
 	details.RequestDetails["timestamp"] = time.Now().Format(time.RFC3339)
 	details.RequestDetails["goroutine_id"] = getGoroutineID()
+
+	// Если путь к сохраненному payload присутствует в контексте — добавим ссылку
+	if v := getFromContext(ctx, "request_body_file_path"); v != "" {
+		details.RequestDetails["request_payload_path"] = v
+	}
 }
 
 // ErrorOption функция для настройки деталей ошибки

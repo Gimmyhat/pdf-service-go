@@ -180,6 +180,7 @@ type RequestDetail struct {
 	RequestFilePath  *string           `json:"request_file_path" db:"request_file_path"`
 	ResultFilePath   *string           `json:"result_file_path" db:"result_file_path"`
 	ResultSizeBytes  *int64            `json:"result_size_bytes" db:"result_size_bytes"`
+	TimingsFilePath  *string           `json:"timings_file_path" db:"timings_file_path"`
 }
 
 // RequestCapture представляет данные для захвата запроса

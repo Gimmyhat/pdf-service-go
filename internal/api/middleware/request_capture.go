@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -44,6 +45,8 @@ func RequestCaptureMiddleware(db *statistics.PostgresDB, config statistics.Reque
 		// Генерируем уникальный ID запроса
 		requestID := generateRequestID()
 		c.Set("request_id", requestID)
+		// Дублируем в заголовок ответа для корреляции на клиенте
+		c.Writer.Header().Set("X-Request-ID", requestID)
 
 		// Захватываем данные запроса
 		capture := &statistics.RequestCapture{
@@ -67,21 +70,56 @@ func RequestCaptureMiddleware(db *statistics.PostgresDB, config statistics.Reque
 			}
 		}
 
+		// Пробросим ключевые метаданные в request.Context, чтобы downstream мог их читать
+		{
+			ctx := context.WithValue(c.Request.Context(), "request_id", requestID)
+			ctx = context.WithValue(ctx, "client_ip", capture.ClientIP)
+			ctx = context.WithValue(ctx, "user_agent", capture.UserAgent)
+			ctx = context.WithValue(ctx, "http_method", capture.Method)
+			ctx = context.WithValue(ctx, "http_path", capture.Path)
+			c.Request = c.Request.WithContext(ctx)
+		}
+
+		// Сохраним тело запроса в файл сразу (до выполнения обработки), чтобы не зависеть от контекста позднее
+		var requestBodyFilePath string
+		if len(capture.Body) > 0 {
+			if path, err := saveRequestBodyToFile(capture.RequestID, capture.Body); err == nil {
+				requestBodyFilePath = path
+			} else {
+				logger.Warn("Failed to persist request body to file", zap.Error(err))
+			}
+		}
+
+		// Сохраним путь к файлу в Gin context и пробросим в request.Context для последующих обработчиков/трекинга
+		if requestBodyFilePath != "" {
+			c.Set("request_body_file_path", requestBodyFilePath)
+			ctx := context.WithValue(c.Request.Context(), "request_body_file_path", requestBodyFilePath)
+			c.Request = c.Request.WithContext(ctx)
+		}
+
 		// Выполняем обработку запроса
 		c.Next()
 
 		// Сохраняем детальную информацию только если включен захват
 		if config.EnableCapture {
-			go func() {
-				// Перед сохранением пробуем сохранить тело запроса в файл
-				if len(capture.Body) > 0 {
-					if path, err := saveRequestBodyToFile(capture.RequestID, capture.Body); err == nil {
-						// Путь установим в контекст, дальнейшее обновление сделаем в saveRequestDetail
-						c.Set("request_body_file_path", path)
-					}
+			// Снимем необходимые значения из контекста ДО запуска горутины
+			statusCode := c.Writer.Status()
+			duration := time.Since(capture.StartTime)
+
+			go func(status int, dur time.Duration, bodyPath string) {
+				// Получаем актуальный DB-инстанс динамически (мог инициализироваться после старта)
+				activeDB := statistics.GetPostgresDB()
+				if activeDB == nil {
+					logger.Warn("Request capture skipped: statistics DB is not initialized yet",
+						zap.String("path", capture.Path),
+						zap.String("method", capture.Method),
+					)
+					return
 				}
-				saveRequestDetail(db, capture, c, sensitivePatterns, config)
-			}()
+				if err := saveRequestDetailSnapshot(activeDB, capture, status, dur, bodyPath, sensitivePatterns, config); err != nil {
+					logger.Error("Failed to save request detail", zap.Error(err))
+				}
+			}(statusCode, duration, requestBodyFilePath)
 		}
 	}
 }
@@ -261,6 +299,59 @@ func saveRequestDetail(db *statistics.PostgresDB, capture *statistics.RequestCap
 			zap.String("request_id", capture.RequestID),
 			zap.Error(err))
 	}
+}
+
+// saveRequestDetailSnapshot сохраняет детальную информацию, не обращаясь к контексту Gin после завершения запроса
+func saveRequestDetailSnapshot(db *statistics.PostgresDB, capture *statistics.RequestCapture, status int, duration time.Duration, bodyFilePath string, sensitivePatterns []*regexp.Regexp, config statistics.RequestCaptureConfig) error {
+	success := status < 400
+	if config.CaptureOnlyErrors && success {
+		return nil
+	}
+
+	bodyText := ""
+	hasSensitiveData := false
+	if len(capture.Body) > 0 {
+		bodyText = string(capture.Body)
+		if config.MaskSensitiveData {
+			for _, pattern := range sensitivePatterns {
+				if pattern.MatchString(bodyText) {
+					hasSensitiveData = true
+					bodyText = pattern.ReplaceAllString(bodyText, "[MASKED]")
+				}
+			}
+		}
+	}
+
+	errorCategory := ""
+	if !success {
+		errorCategory = categorizeError(status, duration, capture.Path)
+	}
+
+	var requestFilePathPtr *string
+	if bodyFilePath != "" {
+		requestFilePathPtr = &bodyFilePath
+	}
+
+	detail := &statistics.RequestDetail{
+		RequestID:        capture.RequestID,
+		Timestamp:        capture.StartTime,
+		Method:           capture.Method,
+		Path:             capture.Path,
+		ClientIP:         capture.ClientIP,
+		UserAgent:        capture.UserAgent,
+		Headers:          capture.Headers,
+		BodyText:         bodyText,
+		BodySizeBytes:    int64(len(capture.Body)),
+		Success:          success,
+		HTTPStatus:       status,
+		DurationNs:       duration.Nanoseconds(),
+		ContentType:      capture.ContentType,
+		HasSensitiveData: hasSensitiveData,
+		ErrorCategory:    errorCategory,
+		RequestFilePath:  requestFilePathPtr,
+	}
+
+	return db.SaveRequestDetail(detail)
 }
 
 // saveRequestBodyToFile сохраняет тело запроса на диск и возвращает путь к файлу

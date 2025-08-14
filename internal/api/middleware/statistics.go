@@ -11,8 +11,6 @@ import (
 
 // StatisticsMiddleware middleware для сбора статистики
 func StatisticsMiddleware() gin.HandlerFunc {
-	stats := statistics.GetInstance()
-
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		method := c.Request.Method
@@ -36,8 +34,16 @@ func StatisticsMiddleware() gin.HandlerFunc {
 				zap.Duration("duration", duration),
 			)
 
-			// Обновляем статистику
-			stats.TrackRequest(path, method, duration, success)
+			// Обновляем статистику (получаем инстанс динамически на каждый запрос)
+			if stats := statistics.GetInstance(); stats != nil {
+				if err := stats.TrackRequest(path, method, duration, success); err != nil {
+					logger.Warn("TrackRequest failed",
+						zap.String("path", path),
+						zap.String("method", method),
+						zap.Error(err),
+					)
+				}
+			}
 		} else {
 			c.Next()
 		}

@@ -219,6 +219,7 @@ func (h *RequestAnalysisHandler) GetRecentRequests(c *gin.Context) {
 	for i := range details {
 		details[i].RequestFilePath = makePublic(details[i].RequestFilePath)
 		details[i].ResultFilePath = makePublic(details[i].ResultFilePath)
+		details[i].TimingsFilePath = makePublic(details[i].TimingsFilePath)
 	}
 
 	// Тайминги в заголовках для диагностики

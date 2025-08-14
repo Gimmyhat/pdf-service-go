@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS request_details (
     gotenberg_log_id INTEGER REFERENCES gotenberg_logs(id)
 );
 
+-- Дополнительные колонки для артефактов (если ещё не добавлены)
+ALTER TABLE request_details ADD COLUMN IF NOT EXISTS request_file_path TEXT;
+ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_file_path TEXT;
+ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_size_bytes BIGINT;
+ALTER TABLE request_details ADD COLUMN IF NOT EXISTS timings_file_path TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_docx_logs_timestamp ON docx_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_gotenberg_logs_timestamp ON gotenberg_logs(timestamp);

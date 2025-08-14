@@ -105,9 +105,11 @@ spec:
         app: nas-pdf-service-prometheus
     spec:
       serviceAccountName: prometheus
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service-prometheus
-        image: dh-mirror.gitverse.ru/prom/prometheus:latest
+        image: registry.devops.rgf.local/prom/prometheus:latest
         args:
         - "--config.file=/etc/prometheus/prometheus.yml"
         - "--storage.tsdb.path=/prometheus"

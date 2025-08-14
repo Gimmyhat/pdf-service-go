@@ -23,9 +23,9 @@ func (p *PostgresDB) SaveRequestDetail(detail *RequestDetail) error {
             headers, body_text, body_size_bytes, success, http_status, duration_ns,
             content_type, has_sensitive_data, error_category,
             request_log_id, docx_log_id, gotenberg_log_id,
-            request_file_path, result_file_path, result_size_bytes
+            request_file_path, result_file_path, result_size_bytes, timings_file_path
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
         )
         ON CONFLICT (request_id) DO UPDATE SET
             timestamp = EXCLUDED.timestamp,
@@ -35,7 +35,8 @@ func (p *PostgresDB) SaveRequestDetail(detail *RequestDetail) error {
             error_category = EXCLUDED.error_category,
             request_file_path = COALESCE(EXCLUDED.request_file_path, request_details.request_file_path),
             result_file_path = COALESCE(EXCLUDED.result_file_path, request_details.result_file_path),
-            result_size_bytes = COALESCE(EXCLUDED.result_size_bytes, request_details.result_size_bytes)
+            result_size_bytes = COALESCE(EXCLUDED.result_size_bytes, request_details.result_size_bytes),
+            timings_file_path = COALESCE(EXCLUDED.timings_file_path, request_details.timings_file_path)
     `
 
 	_, err = p.db.Exec(query,
@@ -44,7 +45,7 @@ func (p *PostgresDB) SaveRequestDetail(detail *RequestDetail) error {
 		detail.BodySizeBytes, detail.Success, detail.HTTPStatus, detail.DurationNs,
 		detail.ContentType, detail.HasSensitiveData, detail.ErrorCategory,
 		detail.RequestLogID, detail.DocxLogID, detail.GotenbergLogID,
-		detail.RequestFilePath, detail.ResultFilePath, detail.ResultSizeBytes,
+		detail.RequestFilePath, detail.ResultFilePath, detail.ResultSizeBytes, detail.TimingsFilePath,
 	)
 
 	return err
@@ -58,6 +59,20 @@ func (p *PostgresDB) UpdateResultFileInfo(requestID string, resultPath string, r
         WHERE request_id = $3
     `
 	_, err := p.db.Exec(query, resultPath, resultSize, requestID)
+	return err
+}
+
+// UpdateResultFileInfoWithTimings обновляет путь результата и опционально путь к файлу таймингов
+func (p *PostgresDB) UpdateResultFileInfoWithTimings(requestID string, resultPath string, resultSize int64, timingsPath *string) error {
+	if timingsPath == nil || *timingsPath == "" {
+		return p.UpdateResultFileInfo(requestID, resultPath, resultSize)
+	}
+	query := `
+        UPDATE request_details
+        SET result_file_path = $1, result_size_bytes = $2, timings_file_path = $3
+        WHERE request_id = $4
+    `
+	_, err := p.db.Exec(query, resultPath, resultSize, *timingsPath, requestID)
 	return err
 }
 

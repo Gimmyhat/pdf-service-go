@@ -55,36 +55,49 @@ func Initialize(cfg Config) error {
 var initMu sync.Mutex
 
 func InitializeOrRetry(cfg Config) error {
-    initMu.Lock()
-    defer initMu.Unlock()
-    if instance != nil {
-        return nil
-    }
-    db, err := New(cfg)
-    if err != nil {
-        return err
-    }
-    instance = NewStatistics(db)
-    return nil
+	initMu.Lock()
+	defer initMu.Unlock()
+	if instance != nil {
+		return nil
+	}
+	db, err := New(cfg)
+	if err != nil {
+		return err
+	}
+	instance = NewStatistics(db)
+	return nil
 }
 
 // TrackRequest записывает информацию о запросе
 func (s *Statistics) TrackRequest(path, method string, duration time.Duration, success bool) error {
+	if s == nil || s.db == nil {
+		// Статистика ещё не инициализирована — безопасно пропускаем
+		return nil
+	}
 	return s.db.LogRequest(time.Now(), path, method, duration, success)
 }
 
 // TrackDocx записывает информацию о генерации DOCX
 func (s *Statistics) TrackDocx(duration time.Duration, hasError bool) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
 	return s.db.LogDocx(time.Now(), duration, hasError)
 }
 
 // TrackGotenberg записывает информацию о запросе к Gotenberg
 func (s *Statistics) TrackGotenberg(duration time.Duration, hasError bool) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
 	return s.db.LogGotenberg(time.Now(), duration, hasError)
 }
 
 // TrackPDF записывает информацию о PDF файле
 func (s *Statistics) TrackPDF(size int64) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
 	return s.db.LogPDF(time.Now(), size)
 }
 

@@ -67,7 +67,7 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	// Добавляем middleware для захвата запросов (до логирования)
 	captureConfig := statistics.RequestCaptureConfig{
 		EnableCapture:     true,
-		CaptureOnlyErrors: false,       // Захватываем все запросы пока тестируем
+		CaptureOnlyErrors: true,        // В бою можно включить только ошибки
 		MaxBodySize:       1024 * 1024, // 1MB максимум
 		ExcludePaths:      []string{"/health", "/metrics", "/favicon.ico"},
 		ExcludeHeaders:    []string{"authorization", "cookie", "x-api-key"},
@@ -76,10 +76,10 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 		KeepLast:          100,
 	}
 
-	db := statistics.GetPostgresDB()
-	if db != nil {
-		router.Use(middleware.RequestCaptureMiddleware(db, captureConfig))
-	}
+	// Регистрируем middleware архива ВСЕГДА.
+	// Сам middleware берёт актуальный DB-инстанс динамически и безопасно пропускает,
+	// если БД ещё не инициализирована.
+	router.Use(middleware.RequestCaptureMiddleware(statistics.GetPostgresDB(), captureConfig))
 
 	// Добавляем middleware для логирования с использованием zap
 	router.Use(func(c *gin.Context) {

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nexus-pull-test
+  namespace: print-serv
+  labels:
+    app: nexus-pull-test
+spec:
+  imagePullSecrets:
+    - name: registry-irk-rw
+  containers:
+    - name: tester
+      image: registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go:25.08.12.1207
+      imagePullPolicy: Always
+      command: ["/bin/sh","-c","sleep 3600"]
+  restartPolicy: Never
+

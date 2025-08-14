@@ -26,9 +26,11 @@ spec:
       labels:
         app: nas-pdf-service-gotenberg
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service-gotenberg
-        image: dh-mirror.gitverse.ru/gotenberg/gotenberg:7.10
+        image: registry.devops.rgf.local/gotenberg/gotenberg:7.10
         args:
         - gotenberg
         - --api-port=3000
