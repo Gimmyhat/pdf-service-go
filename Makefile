@@ -54,6 +54,10 @@ NAMESPACE = print-serv
 NEW_VERSION := $(shell powershell -Command "Get-Date -Format 'yy.MM.dd.HHmm'")
 VERSION ?= latest
 
+# Переопределение репозитория образа для Helm при необходимости
+# Если передан DOCKER_IMAGE=..., добавим --set image.repository=...
+HELM_IMAGE_OVERRIDE := $(if $(DOCKER_IMAGE),--set image.repository=$(DOCKER_IMAGE),)
+
 # Kubernetes контексты
 TEST_CONTEXT = efgi-test
 PROD_CONTEXT = efgi-prod
@@ -108,6 +112,7 @@ new-version:
 	@powershell -Command "Set-Content -Path 'current_version.txt' -Value '$(NEW_VERSION)' -NoNewline"
 	@echo "New version $(NEW_VERSION) has been built and pushed"
 	@echo "Both versioned and latest tags have been updated"
+	@echo "Tip: deploy with 'make deploy ENV=test' (reads current_version.txt automatically)"
 
 # То же самое, но с дополнительной публикацией в Docker Hub
 new-version-hub:
@@ -340,17 +345,8 @@ helm-lint: helm-deps
 # Установка/обновление через Helm
 helm-deploy: check-env helm-deps
 	@echo "Deploying to $(ENV) environment..."
-	@if [ "$(ENV)" = "prod" ]; then \
-		powershell -Command $$confirm = Read-Host -Prompt "Are you sure you want to deploy to production? (y/N)"; \
-		if ($$confirm -ne "y") { \
-			echo "Deployment cancelled."; \
-			exit 1; \
-		} \
-	fi
-	helm upgrade --install pdf-service helm/pdf-service \
-		--namespace $(NAMESPACE) \
-		--values helm/pdf-service/values-$(ENV).yaml \
-		--set image.tag=$(VERSION)
+	@powershell -Command "if ('$(ENV)' -eq 'prod') { $$confirm = Read-Host -Prompt 'Are you sure you want to deploy to production? (y/N)'; if ($$confirm -ne 'y') { Write-Host 'Deployment cancelled.'; exit 1 } }"
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim(); Write-Host \"Using version from current_version.txt: $$DEPLOY_VERSION\" } else { $$DEPLOY_VERSION = 'latest'; Write-Host 'Using latest tag' } } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; helm upgrade --install pdf-service helm/pdf-service --namespace $(NAMESPACE) --values helm/pdf-service/values-$(ENV).yaml --set image.tag=$$DEPLOY_VERSION $(HELM_IMAGE_OVERRIDE)"
 
 # Удаление через Helm
 helm-uninstall: check-env
@@ -410,7 +406,7 @@ show-mirror-usage:
 # Принудительное обновление deployment (когда зеркало не синхронизировалось)
 force-update: check-env
 	@echo "Force updating deployment in $(ENV) environment..."
-	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim(); Write-Host \"Using version from current_version.txt: $$DEPLOY_VERSION\" } else { Write-Host 'Error: No version specified and no current_version.txt found.'; exit 1 } } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; kubectl config use-context $(CONTEXT); Write-Host 'Force updating image...'; kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); Write-Host 'Restarting deployment...'; kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); Write-Host 'Waiting for rollout...'; kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); Write-Host 'Force update completed for $(ENV)'"
+	@powershell -Command "$$DEPLOY_VERSION='$(VERSION)'; if ([string]::IsNullOrEmpty('$(VERSION)') -or '$(VERSION)' -eq 'latest') { if (Test-Path current_version.txt) { $$DEPLOY_VERSION = (Get-Content current_version.txt).Trim(); Write-Host \"Using version from current_version.txt: $$DEPLOY_VERSION\" } else { $$DEPLOY_VERSION = 'latest'; Write-Host 'Using latest tag' } } else { $$DEPLOY_VERSION = '$(VERSION)'.Trim(); Write-Host \"Using specified version: $$DEPLOY_VERSION\" }; kubectl config use-context $(CONTEXT); Write-Host 'Force updating image...'; kubectl set image deployment/nas-pdf-service nas-pdf-service=$(DOCKER_IMAGE):$$DEPLOY_VERSION -n $(NAMESPACE); Write-Host 'Restarting deployment...'; kubectl rollout restart deployment/nas-pdf-service -n $(NAMESPACE); Write-Host 'Waiting for rollout...'; kubectl rollout status deployment/nas-pdf-service -n $(NAMESPACE); Write-Host 'Force update completed for $(ENV)'"
 
 # Проверка синхронизации зеркала
 check-mirror: check-env

@@ -26,8 +26,8 @@
   - Исправлено: хендлеры работают сразу после старта даже при поздней инициализации БД (ленивое получение инстанса), устранены 500/503
 
 ### Автоматизация развертывания ⭐ УЛУЧШЕНО
-- **Docker workflow**: Push в Docker Hub → Автосинхронизация в зеркало → Pull в кластере
-- **Makefile automation**: 20+ команд для всех операций от сборки до мониторинга
+- **Docker workflow**: Push в Nexus RW → автоматическая репликация в DevOps RO → анонимный Pull в кластерах по уникальному тегу
+- **Makefile automation**: 20+ команд, `make new-version` + `make deploy ENV=...` читают `current_version.txt` (VERSION не обязателен)
 - **Environment management**: Поддержка test/prod окружений с автопереключением контекстов
 - **Version management**: Автогенерация версий в формате YY.MM.DD.HHMM
 

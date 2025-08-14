@@ -3,6 +3,14 @@ global:
   environment: test
   namespace: print-serv
 
+# Настройки образа (для RO DevOps реестра используем анонимный pull)
+image:
+  repository: registry.devops.rgf.local/rgf.irk.pdf-service-go
+  pullPolicy: Always
+
+# Отключаем imagePullSecrets в тесте (RO допускает анонимный pull)
+imagePullSecrets: []
+
 # Настройки развертывания
 deployment:
   replicas: 1
@@ -77,4 +85,3 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80 

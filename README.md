@@ -105,17 +105,21 @@ make new-version
 make new-version-hub
 ```
 
-2. **Разверните в тестовом окружении (используйте уникальные теги):**
+2. **Разверните в тестовом окружении (уникальные теги берутся автоматически):**
 
 ```bash
-make deploy ENV=test REGISTRY_PROFILE=mirror VERSION=<YY.MM.DD.HHMM>
+# Публикуем новую версию и записываем в current_version.txt
+make new-version
+
+# Деплой (версия берётся из current_version.txt автоматически)
+make deploy ENV=test REGISTRY_PROFILE=devops
 make test-error-system ENV=test  # Проверка всех endpoints
 ```
 
-3. **Разверните в продакшне (только по уникальному тегу):**
+3. **Разверните в продакшне (та же версия, подтянется автоматически):**
 
 ```bash
-make deploy ENV=prod REGISTRY_PROFILE=mirror VERSION=<YY.MM.DD.HHMM>
+make deploy ENV=prod REGISTRY_PROFILE=devops
 make get-service-url ENV=prod    # Получить URL сервиса
 ```
 
@@ -134,11 +138,11 @@ make run-local      # Запуск в Docker Compose
 ### Управление версиями и развертывание (уникальные теги)
 
 ```bash
-make new-version                                  # Публикация только в Nexus (RW)
+make new-version                                  # Публикация только в Nexus (RW), запись current_version.txt
 make new-version-hub                              # Публикация в Nexus + Docker Hub
-make deploy ENV=test REGISTRY_PROFILE=mirror VERSION=$(cat current_version.txt)
-make deploy ENV=prod REGISTRY_PROFILE=mirror VERSION=$(cat current_version.txt)
-make force-update ENV=prod                        # Принудительное обновление (редко нужно)
+make deploy ENV=test REGISTRY_PROFILE=devops      # Деплой версии из current_version.txt
+make deploy ENV=prod REGISTRY_PROFILE=devops      # Деплой версии из current_version.txt (с подтверждением)
+make force-update ENV=prod                        # Точечное обновление только сервиса
 ```
 
 #### Docker Hub (ручные цели, если нужно отдельно)

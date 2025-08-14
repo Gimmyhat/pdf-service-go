@@ -36,19 +36,19 @@
 ### ✅ Улучшена автоматизация Makefile
 
 - **Убраны жестко прописанные IP**: Автоматическое определение URL сервиса
-- **Централизованные переменные**: `DOCKER_MIRROR`, `DOCKER_HUB_IMAGE` для легкой смены конфигурации
-- **Новые команды**:
-  - `make get-service-url ENV=prod` - получение актуального URL сервиса
-  - `make test-error-system ENV=prod` - комплексная проверка системы
-  - `make show-mirror-usage` - показ файлов использующих зеркало
-  - `make update-mirror NEW_MIRROR=...` - смена зеркала во всех файлах
+- **Централизованные переменные**: `REGISTRY_PROFILE` (mirror|devops|nexus)
+- **Новые/обновлённые команды**:
+  - `make new-version` — генерирует уникальный тег YY.MM.DD.HHMM, пушит в RW и записывает `current_version.txt`
+  - `make deploy ENV=test|prod` — деплой через Helm; версия берётся из `current_version.txt` если `VERSION` не задана
+  - `make force-update ENV=...` — kubectl set image только для сервиса (без Helm), берёт версию из `current_version.txt`, если не задана
+  - `make get-service-url`, `make test-error-system`, `make show-mirror-usage`, `make update-mirror NEW_MIRROR=...`
 
 ### ✅ Решены проблемы развертывания
 
-- **Docker registry workflow**: Push версии в Docker Hub → Mirror (dh-mirror) отдаёт этот тег → Pull в кластере по «уникальному тегу», а не latest
-- **Стандартизирован профиль реестра**: `REGISTRY_PROFILE=mirror|devops|nexus` в Makefile
-- **Обратная совместимость**: Поддержка `GOTENBERG_URL` и `GOTENBERG_API_URL`
-- **Принудительное обновление**: `make force-update` для редких проблем с синхронизацией
+- **Docker registry workflow**: Push в Nexus RW (`registry-irk-rw.devops.rgf.local`) → автоматическая репликация в DevOps RO (`registry.devops.rgf.local`) по префиксу `rgf.irk.*` → Pull в кластере анонимно по уникальному тегу
+- **Стандартизирован профиль реестра**: `REGISTRY_PROFILE=mirror|devops|nexus` в Makefile (по умолчанию `devops`)
+- **Анонимный pull в RO**: Убраны `imagePullSecrets` из Helm values (`values.yaml`, `values-test.yaml`, `values-prod.yaml`)
+- **Принудительное обновление**: `make force-update` для точечного обновления только сервиса
 
 ### ✅ Таймауты и устойчивость
 

@@ -64,9 +64,14 @@ REQUEST_TIMEOUT=180s
 ### Docker Registry Configuration
 
 ```makefile
-DOCKER_MIRROR = registry-irk-rw.devops.rgf.local
-DOCKER_HUB_IMAGE = gimmyhat/pdf-service-go  # legacy
-DOCKER_IMAGE = registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go
+# Профили источника образов
+REGISTRY_PROFILE ?= devops        # mirror | devops | nexus
+
+# RO DevOps (основной путь):
+#  - Реплика из RW (registry-irk-rw.devops.rgf.local) в RO (registry.devops.rgf.local)
+#  - Имена репозиториев с dot-префиксом: rgf.irk.*
+#  - Pull анонимно (без imagePullSecrets)
+IMG_PDF := registry.devops.rgf.local/rgf.irk.pdf-service-go
 ```
 
 ### Kubernetes Contexts
@@ -79,8 +84,8 @@ DOCKER_IMAGE = registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go
 ### Сетевые ограничения
 
 - Нет прямого доступа к Docker Hub из кластеров
-- Используется внутренний реестр Nexus `registry-irk-rw.devops.rgf.local`
-- Образы тянутся по TLS, доступ обеспечивается через `imagePullSecret`
+- Используются Nexus RW `registry-irk-rw.devops.rgf.local` (push) и DevOps RO `registry.devops.rgf.local` (pull)
+- Для RO реестра pull выполняется анонимно (без `imagePullSecrets`); секреты используются только для RW/прокси
 
 ### Ресурсные ограничения
 
