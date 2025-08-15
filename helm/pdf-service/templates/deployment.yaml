@@ -36,6 +36,10 @@ spec:
         ports:
         - containerPort: {{ .Values.service.port }}
           name: http
+        # Внешняя БД: берём настройки из существующего ConfigMap
+        envFrom:
+        - configMapRef:
+            name: nas-pdf-service-postgres-config
         env:
         - name: POD_NAME
           valueFrom:
@@ -45,25 +49,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: POSTGRES_HOST
-          value: {{ include "pdf-service.fullname" . }}-postgresql
-        - name: POSTGRES_PORT
-          value: "5432"
-        - name: POSTGRES_DB
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "pdf-service.fullname" . }}-postgresql
-              key: database
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "pdf-service.fullname" . }}-postgresql
-              key: username
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "pdf-service.fullname" . }}-postgresql
-              key: password
         - name: MAX_CONCURRENT_REQUESTS
           value: {{ .Values.app.maxConcurrentRequests | quote }}
         - name: DOCX_TEMPLATE_CACHE_TTL
@@ -105,8 +90,6 @@ spec:
         resources:
           {{- toYaml .Values.deployment.resources | nindent 12 }}
         volumeMounts:
-        - name: templates
-          mountPath: /app/internal/domain/pdf/templates
         - name: tmp-storage
           mountPath: /tmp
         - name: stats-storage
@@ -124,9 +107,7 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 10
       volumes:
-      - name: templates
-        configMap:
-          name: {{ include "pdf-service.fullname" . }}-templates
+      # Шаблоны используем встроенные из образа; ConfigMap не монтируем
       - name: tmp-storage
         emptyDir:
           sizeLimit: {{ .Values.storage.tmp.sizeLimit }}

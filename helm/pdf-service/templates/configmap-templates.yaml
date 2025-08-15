@@ -5,6 +5,6 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "pdf-service.labels" . | nindent 4 }}
-data:
-  template.docx: |-
-    {{ .Files.Get "files/template.docx" | b64enc }} 
+binaryData:
+  # Храним шаблон DOCX как двоичные данные (base64) для корректного монтирования файла
+  template.docx: {{ .Files.Get "files/template.docx" | b64enc }}
