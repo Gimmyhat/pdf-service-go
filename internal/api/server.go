@@ -67,7 +67,7 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	// Добавляем middleware для захвата запросов (до логирования)
 	captureConfig := statistics.RequestCaptureConfig{
 		EnableCapture:     true,
-		CaptureOnlyErrors: true,        // В бою можно включить только ошибки
+		CaptureOnlyErrors: false,       // ВРЕМЕННО: захватываем ВСЕ запросы для диагностики
 		MaxBodySize:       1024 * 1024, // 1MB максимум
 		ExcludePaths:      []string{"/health", "/metrics", "/favicon.ico"},
 		ExcludeHeaders:    []string{"authorization", "cookie", "x-api-key"},
