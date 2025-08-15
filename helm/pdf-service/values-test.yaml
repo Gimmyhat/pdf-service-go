@@ -2,10 +2,13 @@
 global:
   environment: test
   namespace: print-serv
+  
+# Имя ресурсов как у существующего стека nas-*
+fullnameOverride: nas-pdf-service
 
 # Настройки образа (для RO DevOps реестра используем анонимный pull)
 image:
-  repository: registry.devops.rgf.local/rgf.irk.pdf-service-go
+  repository: registry.devops.rgf.local/gimmyhat/pdf-service-go
   pullPolicy: Always
 
 # Отключаем imagePullSecrets в тесте (RO допускает анонимный pull)
@@ -52,7 +55,7 @@ app:
 
 # Настройки PostgreSQL
 postgresql:
-  enabled: true
+  enabled: false
   auth:
     database: pdf_service
     username: pdf_service
@@ -63,19 +66,19 @@ postgresql:
 
 # Настройки мониторинга
 prometheus:
-  enabled: true
+  enabled: false
   server:
     persistentVolume:
       size: 4Gi
 
 grafana:
-  enabled: true
+  enabled: false
   persistence:
     enabled: true
     size: 1Gi
 
 jaeger:
-  enabled: true
+  enabled: false
   storage:
     type: memory
 

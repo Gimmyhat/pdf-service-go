@@ -2,10 +2,13 @@
 global:
   environment: test
   namespace: print-serv
+  
+# Имя ресурсов, чтобы соответствовать nas-*
+fullnameOverride: nas-pdf-service
 
 # Настройки образа (по умолчанию DevOps RO; конкретный репозиторий и тег могут переопределяться через --set)
 image:
-  repository: registry.devops.rgf.local/rgf.irk.pdf-service-go
+  repository: registry.devops.rgf.local/gimmyhat/pdf-service-go
   tag: latest
   pullPolicy: Always
 
@@ -65,11 +68,11 @@ app:
 # Настройки Gotenberg
 gotenberg:
   enabled: true
-  url: http://nas-pdf-service-gotenberg:3000
+  url: http://nas-gotenberg:3000
 
 # Настройки PostgreSQL
 postgresql:
-  enabled: true
+  enabled: false
   auth:
     database: pdf_service
     username: pdf_service
@@ -80,14 +83,14 @@ postgresql:
 
 # Настройки Prometheus
 prometheus:
-  enabled: true
+  enabled: false
   server:
     persistentVolume:
       size: 8Gi
 
 # Настройки Grafana
 grafana:
-  enabled: true
+  enabled: false
   persistence:
     enabled: true
     size: 1Gi
@@ -99,7 +102,7 @@ grafana:
 
 # Настройки Jaeger
 jaeger:
-  enabled: true
+  enabled: false
   storage:
     type: memory
 
