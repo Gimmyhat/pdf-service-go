@@ -332,7 +332,8 @@ helm-repos:
 
 # Установка зависимостей Helm
 helm-deps: helm-repos
-	cd helm/pdf-service && helm dependency update
+	@echo "Checking if sub-charts are enabled..."
+	@powershell -Command "if ('$(ENV)' -eq 'test' -or '$(ENV)' -eq 'prod') { Write-Host 'Sub-charts disabled in $(ENV) environment, skipping dependency update' } else { Write-Host 'Updating Helm dependencies...'; Set-Location helm/pdf-service; helm dependency update }"
 
 # Проверка шаблонов Helm
 helm-template: helm-deps

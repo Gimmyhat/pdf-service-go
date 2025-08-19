@@ -9,6 +9,7 @@ fullnameOverride: nas-pdf-service
 # Настройки образа (для RO DevOps реестра используем анонимный pull)
 image:
   repository: registry.devops.rgf.local/gimmyhat/pdf-service-go
+  tag: "25.08.15.0930"
   pullPolicy: Always
 
 # Отключаем imagePullSecrets в тесте (RO допускает анонимный pull)
