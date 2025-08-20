@@ -13,21 +13,21 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nas-pdf-service
+      app.kubernetes.io/instance: pdf-service
+      app.kubernetes.io/name: pdf-service
   template:
     metadata:
       labels:
-        app: nas-pdf-service
+        app.kubernetes.io/instance: pdf-service
+        app.kubernetes.io/name: pdf-service
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
-      imagePullSecrets:
-      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service
-        image: registry.devops.rgf.local/gimmyhat/pdf-service-go:latest
+        image: registry.devops.rgf.local/gimmyhat/pdf-service-go:25.08.15.1002
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -102,9 +102,6 @@ spec:
           value: "100ms"
         - name: GOTENBERG_RETRY_BACKOFF_FACTOR
           value: "1.5"
-        # Добавляем GOTENBERG_URL как alias для обратной совместимости
-        - name: GOTENBERG_URL
-          value: "http://nas-pdf-service-gotenberg:3000"
         resources:
           requests:
             memory: "1Gi"
@@ -167,7 +164,8 @@ metadata:
     prometheus.io/path: "/metrics"
 spec:
   selector:
-    app: nas-pdf-service
+    app.kubernetes.io/instance: pdf-service
+    app.kubernetes.io/name: pdf-service
   ports:
   - port: 8080
     targetPort: 8080

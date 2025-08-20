@@ -13,11 +13,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nas-pdf-service
+      app.kubernetes.io/instance: pdf-service
+      app.kubernetes.io/name: pdf-service
   template:
     metadata:
       labels:
-        app: nas-pdf-service
+        app.kubernetes.io/instance: pdf-service
+        app.kubernetes.io/name: pdf-service
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -25,7 +27,7 @@ spec:
     spec:
       containers:
       - name: nas-pdf-service
-        image: dh-mirror.gitverse.ru/gimmyhat/pdf-service-go:latest
+        image: registry.devops.rgf.local/gimmyhat/pdf-service-go:25.08.15.1002
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
