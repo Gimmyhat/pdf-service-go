@@ -9,6 +9,155 @@ data:
   POSTGRES_PASSWORD: pdf_service_pass
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-pdf-service-postgres-conf
+  namespace: print-serv
+data:
+  postgresql.conf: |
+    # Настройки для стабильной работы с NFS
+    synchronous_commit = off
+    wal_sync_method = fdatasync
+    checkpoint_timeout = 15min
+    checkpoint_completion_target = 0.9
+    
+    # Уменьшаем нагрузку на файловую систему
+    bgwriter_delay = 200ms
+    bgwriter_lru_maxpages = 100
+    bgwriter_lru_multiplier = 2.0
+    
+    # Настройки подключений
+    max_connections = 500
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    work_mem = 4MB
+    maintenance_work_mem = 64MB
+    
+    # Логирование для отладки
+    log_min_duration_statement = 1000
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+    
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-pdf-service-postgres-init
+  namespace: print-serv
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS request_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      path TEXT NOT NULL,
+      method TEXT NOT NULL,
+      duration_ns BIGINT NOT NULL,
+      success BOOLEAN NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS docx_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      duration_ns BIGINT NOT NULL,
+      has_error BOOLEAN NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS gotenberg_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      duration_ns BIGINT NOT NULL,
+      has_error BOOLEAN NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pdf_logs (
+      id SERIAL PRIMARY KEY,
+      timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+      size_bytes BIGINT NOT NULL
+    );
+
+    -- Новая таблица для детального логирования запросов
+    CREATE TABLE IF NOT EXISTS request_details (
+        id SERIAL PRIMARY KEY,
+        request_id TEXT UNIQUE NOT NULL,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+        
+        -- HTTP детали
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        client_ip TEXT,
+        user_agent TEXT,
+        
+        -- Содержимое запроса
+        headers JSONB,
+        body_text TEXT,
+        body_size_bytes BIGINT,
+        
+        -- Статус обработки
+        success BOOLEAN NOT NULL,
+        http_status INTEGER,
+        duration_ns BIGINT,
+        
+        -- Метаданные для анализа
+        content_type TEXT,
+        has_sensitive_data BOOLEAN DEFAULT false,
+        error_category TEXT,
+        
+        -- Связи с другими таблицами
+        request_log_id INTEGER REFERENCES request_logs(id),
+        docx_log_id INTEGER REFERENCES docx_logs(id),
+        gotenberg_log_id INTEGER REFERENCES gotenberg_logs(id)
+    );
+
+    -- Дополнительные колонки для артефактов (файлы запроса и результата)
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS request_file_path TEXT;
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_file_path TEXT;
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS result_size_bytes BIGINT;
+    ALTER TABLE request_details ADD COLUMN IF NOT EXISTS timings_file_path TEXT;
+
+    CREATE TABLE IF NOT EXISTS error_logs (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+        request_id TEXT,
+        trace_id TEXT,
+        span_id TEXT,
+        error_type TEXT NOT NULL,
+        component TEXT NOT NULL,
+        message TEXT NOT NULL,
+        stack_trace TEXT,
+        request_details JSONB,
+        client_ip TEXT,
+        user_agent TEXT,
+        http_method TEXT,
+        http_path TEXT,
+        http_status INTEGER,
+        duration_ns BIGINT,
+        severity TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_docx_logs_timestamp ON docx_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_gotenberg_logs_timestamp ON gotenberg_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_pdf_logs_timestamp ON pdf_logs(timestamp);
+
+    -- Индексы для error_logs
+    CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_type ON error_logs(error_type);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_component ON error_logs(component);
+    CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity);
+
+    -- Индексы для request_details
+    CREATE INDEX IF NOT EXISTS idx_request_details_timestamp ON request_details(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_request_details_request_id ON request_details(request_id);
+    CREATE INDEX IF NOT EXISTS idx_request_details_success ON request_details(success);
+    CREATE INDEX IF NOT EXISTS idx_request_details_error_category ON request_details(error_category);
+    CREATE INDEX IF NOT EXISTS idx_request_details_result_size ON request_details(result_size_bytes);
+    -- Индексы для ускорения архива конвертаций
+    CREATE INDEX IF NOT EXISTS idx_request_details_path ON request_details(path);
+    CREATE INDEX IF NOT EXISTS idx_request_details_path_ts ON request_details(path, timestamp DESC);
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: nas-pdf-service-postgres-pvc
@@ -18,7 +167,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: 5Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -35,38 +184,70 @@ spec:
       labels:
         app: nas-pdf-service-postgres
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service-postgres
-        image: postgres:15-alpine
+        image: registry.devops.rgf.local/library/postgres:15-alpine
         ports:
         - containerPort: 5432
         envFrom:
         - configMapRef:
             name: nas-pdf-service-postgres-config
+        env:
+        - name: POSTGRES_MAX_CONNECTIONS
+          value: "500"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        # Настройки для стабильной работы с NFS
+        - name: POSTGRES_INITDB_ARGS
+          value: "--data-checksums"
+        - name: POSTGRES_CONFIG_FILE
+          value: "/etc/postgresql/postgresql.conf"
+        # Добавляем настройки для надежности на NFS
+        - name: POSTGRES_SHARED_PRELOAD_LIBRARIES
+          value: ""
         volumeMounts:
         - name: nas-pdf-service-postgres-storage
           mountPath: /var/lib/postgresql/data
+        - name: nas-pdf-service-postgres-init
+          mountPath: /docker-entrypoint-initdb.d
+        - name: nas-pdf-service-postgres-conf
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
+            memory: "1.5Gi"
+            cpu: "750m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "3Gi"
+            cpu: "1500m"
         readinessProbe:
           exec:
             command: ["pg_isready", "-U", "pdf_service"]
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 5
         livenessProbe:
           exec:
             command: ["pg_isready", "-U", "pdf_service"]
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 15
+          successThreshold: 1
+          failureThreshold: 5
       volumes:
       - name: nas-pdf-service-postgres-storage
         persistentVolumeClaim:
           claimName: nas-pdf-service-postgres-pvc
+      - name: nas-pdf-service-postgres-init
+        configMap:
+          name: nas-pdf-service-postgres-init
+      - name: nas-pdf-service-postgres-conf
+        configMap:
+          name: nas-pdf-service-postgres-conf
 ---
 apiVersion: v1
 kind: Service

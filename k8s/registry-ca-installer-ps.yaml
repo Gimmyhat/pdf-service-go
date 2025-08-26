@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: registry-ca-installer
+  namespace: print-serv
+  labels:
+    app: registry-ca-installer
+spec:
+  selector:
+    matchLabels:
+      app: registry-ca-installer
+  template:
+    metadata:
+      labels:
+        app: registry-ca-installer
+    spec:
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: installer
+          image: alpine:3.19
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eux
+              REG_HOST=registry-irk-rw.devops.rgf.local
+              mkdir -p /host/etc/containers/certs.d/${REG_HOST}
+              cat >/tmp/ca.b64 <<'B64'
+              LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUZ0ekNDQTUrZ0F3SUJBZ0lVYTZETnBzbXpJbEdjbXkzQlZSdW85cjVaZ2hFd0RRWUpLb1pJaHZjTkFRRUwKQlFBd1l6RUxNQWtHQTFVRUJoTUNVbFV4RHpBTkJnTlZCQWdNQmsxdmMyTnZkekVQTUEwR0ExVUVCd3dHVFc5egpZMjkzTVF3d0NnWURWUVFLREFOU1IwWXhEREFLQmdOVkJBc01BMFJsZGpFV01CUUdBMVVFQXd3TmF6aHpMbkpuClppNXNiMk5oYkRBZUZ3MHlOVEF5TURZeE1UUXpNekZhRncwek5UQXlNRFF4TVRRek16RmFNR014Q3pBSkJnTlYKQkFZVEFsSlZNUTh3RFFZRFZRUUlEQVpOYjNOamIzY3hEekFOQmdOVkJBY01CazF2YzJOdmR6RU1NQW9HQTFVRQpDZ3dEVWtkR01Rd3dDZ1lEVlFRTERBTkVaWFl4RmpBVUJnTlZCQU1NRFdzNGN5NXlaMll1Ykc5allXd3dnZ0lpCk1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQ0R3QXdnZ0lLQW9JQ0FRQzA3ODVQL0MzUXpCWGUyWUpoUlE1MFIrYlUKa01odTVqSUpLTUxoOExXYUNldzRtQnNFSzd4YmFrN3VValEwRWFINzY1S3k4b2FKOXhrem14WXFHSkVTQ1RaUQpEeHpnSks1blkwN1NmVkZsY1JzMjBHTWQ5SVRaWHZzNEphcnNKaXNkcURmdm5FUk56cE9QMnYxWXMwZHVaWmJiClBkM2FvMFladEtjK3NNZGZaVmczQmEzeUFKZDJwZzk2TElSdk45UkFxcmcrdmVQTmpHUC9HNlJrWHcxb1JxNlAKTnU5NXFOaXRHb0M1WFptTkxKbDBLTVpiaTZvKzhFc2ZNZ01ZbGVPRTc3ZWZPb1p5M3hQM1BBMkdITjNGTFU4SQpyK2Zkb2ZlME1aSTdPTHhONnZsdXd6cVJBWStIUUZibmtCZmdPNXRxZFhXQTk5R2lsQ3RqbmpDTHNJc2hyZzBRCk5FdXBiajlJVVIrcTJkOGpEa2p3NmQ4V2VGeWxGMExzUTJuWWh0UHpzSDhOSWRRVElhb1NNakJHS3A0alk4dzQKbGhJN0VtNWY4dWRsRmlKZEhmOVVGSVBTdi9pUTFlcnh0enpYalNzK3FSZldYU2N2QklJTHVzMmVhL05HazN0bgowTFZTK0U3RHg1ZVo0cktUQS9vZml2YzlVUkxnQ2VoZS9zaTBZMEh0VFFienJ5ZXd3T1ZBamRNUDVJMmhYNVRUCmtsZ0ZSRndUaGtDYU1ZczM5ZFZmMEc5eWJCY2VUdG03c3BLWEhwWjcxOGY3enpuWUk2STI0VFhVa05yTWxTN3AKWlFMZXBzWTFTaVZ5dUJvK3NnbGhkRURPTmVRV3Ard2VnOU1Xb3NxQ2Jmd3ZUeDJrbjkrLzBMZjYzaXlhSGJmZAozbGFFL2NYRERWaFdLQlQ2R3dJREFRQUJvMk13WVRBZEJnTlZIUTRFRmdRVVZJOXNoek5qQWVoWTB4WUpQaXRFCm1vcktCbzh3SHdZRFZSMGpCQmd3Rm9BVVZJOXNoek5qQWVoWTB4WUpQaXRFbW9yS0JvOHdEd1lEVlIwVEFRSC8KQkFVd0F3RUIvekFPQmdOVkhROEJBZjhFQkFNQ0FRWXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnSUJBRXFsdG5XTwo0VzRGYWdJYndLZE1ObnlSS0xOcWNPclN2SVFJUDNCMFlsRE9QU2VadnczMjE5ODFPZFRHcHJkaWxYY3pPZ2cyCktGN014K3pRdkRuZWIzZjJHS1RTWDRTaGorNTUrci9FSW5XeEVFSTA1OS9oRkRqcUFmVHRJVFA4NkxzcVByM1MKc1FWQzQvdGF1eHI0OFliYmFNeDJ0MEkvdk9VcW94UmdXR3YwemxKREwyTjgyVGtFSzJ4UlIzelgvN1kyd2FGMgpRU3djYjMwSFdQV0dWc0cyUzFQcEtYSjJ6bFA3RUgyeERsU2dYTU4zTnJCejZYQkN3K2g1SzI1OFZhcUFxVTZMCjRqdTc5V2YzdEQxaEwzdEU0aDZ6V0lZNDk2SmU4ZVJ2TGxYdmJQUm1BczZWbmFuakl0bkhYa3BsbjhGTTFuS2IKL2k4UDUvOFJhSlB6M1RMMy9BY0E1S3RMcWVZNXlhd095QzFsV25udkhGbDU5MmI1TDl3Y2d2blQ5dFEwT3l5TwpBM1JvMHNXSit6UVg1TFZuZkgraTFNaXBzTy9HTTNSZExOTHMwdUV3eEl1Y3J0eEJmL25CQ2pwZnM2OEdweFhYCjJYLzFOTWpTL0Q2aG5qMTRvNUozeE5yMUVidDZSbko4N1NrMHd1MnlmVUtOd3RJUm1FWjNOcm1BNWUrWTJsNFYKYkdtTjhmelNBR3dOTkcxTTJsWUdXRXZNL21aNUova1RSMGc1Tm45YURvYjUvbmRUUlJkK0plTUUxRDVNeHhkOQpBY0YzckVSQUNVL0FTelhZSUczK0JZRGJpUkZ0eHhyQ1lKTzJ4a040bUdwYnAzS29vZDgyMWNtcUJIRkJGS0EwCnpLVi9mdllhMjNGMTJNdEpKMzFUdThVeHhSMS85RTczUy9pVwotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+              B64
+              base64 -d /tmp/ca.b64 > /tmp/ca.crt
+              cp /tmp/ca.crt /host/etc/containers/certs.d/${REG_HOST}/ca.crt || true
+              if pidof crio >/dev/null 2>&1; then kill -HUP $(pidof crio) || true; fi
+              sleep 36000
+          volumeMounts:
+            - name: etc-containers
+              mountPath: /host/etc/containers
+      volumes:
+        - name: etc-containers
+          hostPath:
+            path: /etc/containers
+            type: DirectoryOrCreate
+

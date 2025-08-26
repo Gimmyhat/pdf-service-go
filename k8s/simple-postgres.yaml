@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-pdf-service-postgres
+  namespace: print-serv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nas-pdf-service-postgres
+  template:
+    metadata:
+      labels:
+        app: nas-pdf-service-postgres
+    spec:
+      containers:
+      - name: nas-pdf-service-postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "pdf_service"
+        - name: POSTGRES_USER
+          value: "pdf_service"
+        - name: POSTGRES_PASSWORD
+          value: "pdf_service_pass"
+        - name: POSTGRES_HOST
+          value: "0.0.0.0"
+        - name: POSTGRES_PORT
+          value: "5432"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: postgres-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-pdf-service-postgres
+  namespace: print-serv
+spec:
+  selector:
+    app: nas-pdf-service-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP

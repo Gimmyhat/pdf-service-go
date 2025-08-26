@@ -26,50 +26,59 @@ spec:
       labels:
         app: nas-pdf-service-gotenberg
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: nas-pdf-service-gotenberg
-        image: gotenberg/gotenberg:7.10
+        image: registry.devops.rgf.local/gotenberg/gotenberg:7.10
         args:
         - gotenberg
         - --api-port=3000
         - --chromium-disable-javascript=true
         - --chromium-allow-list=file:///tmp/.*
         - --libreoffice-restart-after=10
-        - --libreoffice-start-timeout=30s
-        - --api-timeout=30s
-        - --api-start-timeout=30s
+        - --libreoffice-start-timeout=120s
+        - --api-timeout=180s
+        - --api-start-timeout=120s
         - --api-trace-header=X-Request-ID
         - --log-level=info
         - --log-format=json
-        - --chromium-start-timeout=30s
-        - --gotenberg-graceful-shutdown-duration=30s
-        - --webhook-client-timeout=30s
+        - --chromium-start-timeout=60s
+        - --gotenberg-graceful-shutdown-duration=60s
+        - --webhook-client-timeout=60s
         ports:
         - containerPort: 3000
+        env:
+        - name: GOTENBERG_MAX_WORKERS
+          value: "4"
+        - name: GOTENBERG_LIBREOFFICE_MAX_QUEUE_SIZE
+          value: "10"
+        - name: GOTENBERG_CHROMIUM_MAX_QUEUE_SIZE
+          value: "10"
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
+            memory: "1.5Gi"
             cpu: "1000m"
+          limits:
+            memory: "3Gi"
+            cpu: "2000m"
         readinessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          timeoutSeconds: 2
-          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
           successThreshold: 1
         livenessProbe:
           httpGet:
             path: /health
             port: 3000
-          initialDelaySeconds: 20
-          periodSeconds: 15
-          timeoutSeconds: 2
-          failureThreshold: 3
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
           successThreshold: 1
         volumeMounts:
         - name: tmp-storage

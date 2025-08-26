@@ -3,6 +3,14 @@ global:
   environment: prod
   namespace: print-serv
 
+# Настройки образа (RO DevOps, анонимный pull)
+image:
+  repository: registry.devops.rgf.local/rgf.irk.pdf-service-go
+  pullPolicy: Always
+
+# Для RO секрет не нужен
+imagePullSecrets: []
+
 # Настройки развертывания
 deployment:
   replicas: 2
@@ -106,7 +114,6 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 5
   targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 70
 
 # Настройки хранилища
 storage:

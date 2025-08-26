@@ -13,9 +13,11 @@ spec:
       labels:
         app: nas-grafana
     spec:
+      imagePullSecrets:
+      - name: registry-irk-rw
       containers:
       - name: grafana
-        image: grafana/grafana:latest
+        image: registry.devops.rgf.local/grafana/grafana:11.1.3
         ports:
         - containerPort: 3000
         env:

@@ -41,7 +41,7 @@ func NewClientWithPool(baseURL string) *ClientWithPool {
 
 		client := &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   getEnvDurationWithDefault("GOTENBERG_CLIENT_TIMEOUT", 60 * time.Second),
 		}
 
 		return client, func() error {
@@ -68,7 +68,11 @@ func (c *ClientWithPool) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 	defer c.pool.Put(conn)
 
 	// Используем базовый клиент для конвертации
-	client := c.newClient(conn)
+	client := &Client{
+		baseURL: c.baseURL,
+		client:  conn.GetConn().(*http.Client),
+	}
+
 	return client.ConvertDocxToPDF(docxPath)
 }
 
@@ -80,7 +84,11 @@ func (c *ClientWithPool) HealthCheck() error {
 	}
 	defer c.pool.Put(conn)
 
-	client := c.newClient(conn)
+	client := &Client{
+		baseURL: c.baseURL,
+		client:  conn.GetConn().(*http.Client),
+	}
+
 	return client.HealthCheck(true)
 }
 
@@ -92,16 +100,4 @@ func (c *ClientWithPool) Close() error {
 // Stats возвращает статистику пула соединений
 func (c *ClientWithPool) Stats() connpool.Stats {
 	return c.pool.Stats()
-}
-
-func (c *ClientWithPool) newClient(conn *connpool.Connection) *Client {
-	clientConn := conn.GetConn()
-	httpClient, ok := clientConn.(*http.Client)
-	if !ok {
-		return nil
-	}
-	return &Client{
-		baseURL: c.baseURL,
-		client:  httpClient,
-	}
 }

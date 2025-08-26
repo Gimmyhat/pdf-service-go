@@ -3,16 +3,21 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"pdf-service-go/internal/api/middleware"
 	"pdf-service-go/internal/domain/pdf"
+	"pdf-service-go/internal/pkg/errortracker"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/statistics"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
@@ -34,6 +39,9 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	// Создаем новый роутер без стандартного логгера
 	router := gin.New()
 
+	// Включаем gzip-сжатие ответов
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
+
 	// Настройка лимитов
 	router.MaxMultipartMemory = 8 << 20 // 8 MiB
 	logger.Info("Server memory limits configured", zap.String("max_multipart_memory", "8 MiB"))
@@ -44,8 +52,34 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 			zap.Any("error", err),
 			zap.String("path", c.Request.URL.Path),
 		)
+
+		// Отслеживаем panic как критическую ошибку
+		errortracker.TrackError(c.Request.Context(), fmt.Errorf("panic: %v", err),
+			errortracker.WithComponent("api"),
+			errortracker.WithErrorType("panic"),
+			errortracker.WithSeverity("critical"),
+			errortracker.WithHTTPStatus(http.StatusInternalServerError),
+		)
+
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}))
+
+	// Добавляем middleware для захвата запросов (до логирования)
+	captureConfig := statistics.RequestCaptureConfig{
+		EnableCapture:     true,
+		CaptureOnlyErrors: false,       // ВРЕМЕННО: захватываем ВСЕ запросы для диагностики
+		MaxBodySize:       1024 * 1024, // 1MB максимум
+		ExcludePaths:      []string{"/health", "/metrics", "/favicon.ico"},
+		ExcludeHeaders:    []string{"authorization", "cookie", "x-api-key"},
+		RetentionDays:     7,
+		MaskSensitiveData: true,
+		KeepLast:          100,
+	}
+
+	// Регистрируем middleware архива ВСЕГДА.
+	// Сам middleware берёт актуальный DB-инстанс динамически и безопасно пропускает,
+	// если БД ещё не инициализирована.
+	router.Use(middleware.RequestCaptureMiddleware(statistics.GetPostgresDB(), captureConfig))
 
 	// Добавляем middleware для логирования с использованием zap
 	router.Use(func(c *gin.Context) {
@@ -91,9 +125,18 @@ func NewServer(handlers *Handlers, service pdf.Service) *Server {
 	router.Use(middleware.PrometheusMiddleware())
 	router.Use(middleware.StatisticsMiddleware())
 
+	// Конфигурируем таймаут запроса из переменной окружения REQUEST_TIMEOUT (по умолчанию 180s)
+	requestTimeout := getRequestTimeout()
+	logger.Info("Request timeout configured", zap.String("REQUEST_TIMEOUT", requestTimeout.String()))
+
 	// Добавляем middleware для таймаутов
 	router.Use(func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		// Для лёгких GET запросов архива используем короткий SLA таймаут
+		timeout := requestTimeout
+		if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/api/v1/requests/recent") {
+			timeout = 5 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
@@ -119,16 +162,52 @@ func (s *Server) SetupRoutes() {
 	// Статистика API
 	s.Router.GET("/api/v1/statistics", s.Handlers.Statistics.GetStatistics)
 
-	// Веб-интерфейс для статистики
+	// API для детальной информации об ошибках
+	s.Router.GET("/api/v1/errors", s.Handlers.Errors.GetErrors)
+	s.Router.GET("/api/v1/errors/stats", s.Handlers.Errors.GetErrorStats)
+	s.Router.GET("/api/v1/errors/:id", s.Handlers.Errors.GetErrorDetails)
+
+	// API для анализа детальных запросов (регистрируется ниже внутри группы v1)
+
+	// Единый дашборд
+	s.Router.GET("/dashboard", func(c *gin.Context) {
+		c.File("internal/static/dashboard.html")
+	})
+
+	// Главная страница перенаправляет на дашборд
+	s.Router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusTemporaryRedirect, "/dashboard")
+	})
+
+	// Веб-интерфейс для статистики (сохраняем для обратной совместимости)
 	s.Router.GET("/stats", func(c *gin.Context) {
 		c.File("internal/static/index.html")
 	})
 
+	// Веб-интерфейс для ошибок (сохраняем для обратной совместимости)
+	s.Router.GET("/errors", func(c *gin.Context) {
+		c.File("internal/static/errors.html")
+	})
+
 	// Статические файлы
 	s.Router.Static("/static", "internal/static")
+	// Раздача артефактов (запросов и результатов)
+	s.Router.Static("/files", "/app/data/artifacts")
 
-	// Тестовый эндпоинт для проверки логирования ошибок
+	// Тестовые эндпоинты для проверки логирования ошибок
 	s.Router.GET("/test-error", func(c *gin.Context) {
+		err := fmt.Errorf("test error for debugging")
+
+		// Тестируем новую систему отслеживания ошибок
+		errortracker.TrackError(c.Request.Context(), err,
+			errortracker.WithComponent("api"),
+			errortracker.WithErrorType("validation"),
+			errortracker.WithSeverity("medium"),
+			errortracker.WithHTTPStatus(http.StatusInternalServerError),
+			errortracker.WithRequestDetails("test_mode", true),
+			errortracker.WithRequestDetails("endpoint", "test-error"),
+		)
+
 		logger.Error("Test error endpoint called",
 			zap.String("test_field", "test_value"),
 			zap.Int("error_code", 500),
@@ -139,12 +218,36 @@ func (s *Server) SetupRoutes() {
 		})
 	})
 
+	s.Router.GET("/test-timeout", func(c *gin.Context) {
+		err := fmt.Errorf("context deadline exceeded (Client.Timeout exceeded while awaiting headers)")
+
+		errortracker.TrackError(c.Request.Context(), err,
+			errortracker.WithComponent("gotenberg"),
+			errortracker.WithErrorType("timeout"),
+			errortracker.WithSeverity("high"),
+			errortracker.WithHTTPStatus(http.StatusGatewayTimeout),
+			errortracker.WithDuration(30*time.Second),
+			errortracker.WithRequestDetails("pages", 5),
+		)
+
+		c.JSON(http.StatusGatewayTimeout, gin.H{
+			"error": "Test timeout error",
+		})
+	})
+
 	// API endpoints
 	v1 := s.Router.Group("/api/v1")
 	{
 		v1.POST("/docx", func(c *gin.Context) {
 			s.Handlers.PDF.GenerateDocx(c)
 		})
+		// Дублируем endpoints архива в группе v1 (для корректного матчинга роутов)
+		v1.GET("/requests/recent", s.Handlers.RequestAnalysis.GetRecentRequests)
+		v1.POST("/requests/cleanup", s.Handlers.RequestAnalysis.CleanupRequests)
+		v1.GET("/requests/error", s.Handlers.RequestAnalysis.GetErrorRequests)
+		v1.GET("/requests/analytics", s.Handlers.RequestAnalysis.GetErrorAnalytics)
+		v1.GET("/requests/:request_id", s.Handlers.RequestAnalysis.GetRequestDetail)
+		v1.GET("/requests/:request_id/body", s.Handlers.RequestAnalysis.GetRequestBody)
 	}
 
 	// Поддержка старого endpoint'а для обратной совместимости
@@ -156,18 +259,26 @@ func (s *Server) SetupRoutes() {
 		logger.Field("health_endpoint", "/health"),
 		logger.Field("metrics_endpoint", "/metrics"),
 		logger.Field("statistics_endpoint", "/api/v1/statistics"),
+		logger.Field("dashboard_ui", "/dashboard"),
+		logger.Field("home_redirect", "/"),
 		logger.Field("statistics_ui", "/stats"),
-		logger.Field("test_endpoint", "/test-error"),
+		logger.Field("errors_api", "/api/v1/errors"),
+		logger.Field("errors_ui", "/errors"),
+		logger.Field("test_endpoints", []string{"/test-error", "/test-timeout"}),
 		logger.Field("api_endpoints", []string{"/api/v1/docx", "/generate-pdf"}),
 	)
 }
 
 func (s *Server) Start(addr string) error {
+	// Настраиваем write timeout с запасом относительно REQUEST_TIMEOUT
+	requestTimeout := getRequestTimeout()
+	writeTimeout := requestTimeout + 10*time.Second
+
 	s.server = &http.Server{
 		Addr:           addr,
 		Handler:        s.Router,
 		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   30 * time.Second,
+		WriteTimeout:   writeTimeout,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
@@ -256,4 +367,18 @@ func (s *Server) handleHealth() gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, response)
 	}
+}
+
+// getRequestTimeout читает REQUEST_TIMEOUT из переменных окружения.
+// Формат значения: duration (например, "180s", "2m"). По умолчанию 180s.
+func getRequestTimeout() time.Duration {
+	val := os.Getenv("REQUEST_TIMEOUT")
+	if val == "" {
+		return 180 * time.Second
+	}
+	d, err := time.ParseDuration(val)
+	if err != nil || d <= 0 {
+		return 180 * time.Second
+	}
+	return d
 }

@@ -1,0 +1,85 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+env:
+  DOCKER_IMAGE: registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go
+  K8S_NAMESPACE: print-serv
+
+jobs:
+  build-and-push:
+    if: ${{ secrets.NEXUS_USERNAME != '' && secrets.NEXUS_PASSWORD != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Nexus Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry-irk-rw.devops.rgf.local
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image (Nexus)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+
+      - name: Push to Docker Hub mirror
+        run: |
+          docker tag ${{ env.DOCKER_IMAGE }}:${{ github.sha }} gimmyhat/pdf-service-go:${{ github.sha }}
+          docker tag ${{ env.DOCKER_IMAGE }}:${{ github.sha }} gimmyhat/pdf-service-go:latest
+          docker push gimmyhat/pdf-service-go:${{ github.sha }}
+          docker push gimmyhat/pdf-service-go:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubeconfig
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Применяем конфигурации
+          kubectl apply -f k8s/nas-pdf-service-configmap.yaml -n ${{ env.K8S_NAMESPACE }}
+          kubectl apply -f k8s/nas-pdf-service-templates-configmap.yaml -n ${{ env.K8S_NAMESPACE }}
+          kubectl apply -f k8s/nas-pdf-service-gotenberg-deployment.yaml -n ${{ env.K8S_NAMESPACE }}
+          kubectl apply -f k8s/nas-pdf-service-deployment.yaml -n ${{ env.K8S_NAMESPACE }}
+          kubectl apply -f k8s/nas-pdf-service-hpa.yaml -n ${{ env.K8S_NAMESPACE }}
+          # Обновляем образ после применения ресурсов
+          kubectl set image deployment/nas-pdf-service \
+            nas-pdf-service=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -n ${{ env.K8S_NAMESPACE }}
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/nas-pdf-service -n ${{ env.K8S_NAMESPACE }}
+          kubectl rollout status deployment/nas-pdf-service-gotenberg -n ${{ env.K8S_NAMESPACE }} 

@@ -26,6 +26,16 @@ func GetInstance() *Statistics {
 	return instance
 }
 
+// GetPostgresDB возвращает PostgresDB из statistics instance
+func GetPostgresDB() *PostgresDB {
+	if instance != nil && instance.db != nil {
+		if pgDB, ok := instance.db.(*PostgresDB); ok {
+			return pgDB
+		}
+	}
+	return nil
+}
+
 // Initialize инициализирует синглтон Statistics
 func Initialize(cfg Config) error {
 	var err error
@@ -40,23 +50,54 @@ func Initialize(cfg Config) error {
 	return err
 }
 
+// InitializeOrRetry пытается инициализировать Statistics, если она ещё не инициализирована.
+// В отличие от Initialize, может вызываться многократно до успешного подключения.
+var initMu sync.Mutex
+
+func InitializeOrRetry(cfg Config) error {
+	initMu.Lock()
+	defer initMu.Unlock()
+	if instance != nil {
+		return nil
+	}
+	db, err := New(cfg)
+	if err != nil {
+		return err
+	}
+	instance = NewStatistics(db)
+	return nil
+}
+
 // TrackRequest записывает информацию о запросе
 func (s *Statistics) TrackRequest(path, method string, duration time.Duration, success bool) error {
+	if s == nil || s.db == nil {
+		// Статистика ещё не инициализирована — безопасно пропускаем
+		return nil
+	}
 	return s.db.LogRequest(time.Now(), path, method, duration, success)
 }
 
 // TrackDocx записывает информацию о генерации DOCX
 func (s *Statistics) TrackDocx(duration time.Duration, hasError bool) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
 	return s.db.LogDocx(time.Now(), duration, hasError)
 }
 
 // TrackGotenberg записывает информацию о запросе к Gotenberg
 func (s *Statistics) TrackGotenberg(duration time.Duration, hasError bool) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
 	return s.db.LogGotenberg(time.Now(), duration, hasError)
 }
 
 // TrackPDF записывает информацию о PDF файле
 func (s *Statistics) TrackPDF(size int64) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
 	return s.db.LogPDF(time.Now(), size)
 }
 
@@ -68,6 +109,54 @@ func (s *Statistics) GetStatistics(since time.Time) (*Stats, error) {
 // Close закрывает соединение с базой данных
 func (s *Statistics) Close() error {
 	return s.db.Close()
+}
+
+// GetDB возвращает интерфейс базы данных для прямого доступа
+func (s *Statistics) GetDB() DB {
+	return s.db
+}
+
+// LogError записывает детальную информацию об ошибке
+func (s *Statistics) LogError(errorDetails *ErrorDetails) error {
+	return s.db.LogError(errorDetails)
+}
+
+// GetErrorSummary возвращает сводку ошибок
+func (s *Statistics) GetErrorSummary(since time.Time, limit int) (*ErrorSummary, error) {
+	// Получаем последние ошибки
+	recentErrors, err := s.db.GetRecentErrors(limit, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent errors: %w", err)
+	}
+
+	// Получаем паттерны ошибок
+	patterns, err := s.db.GetErrorPatterns(since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get error patterns: %w", err)
+	}
+
+	// Получаем счетчики
+	total, last24h, lastHour, err := s.db.GetErrorCounts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get error counts: %w", err)
+	}
+
+	// Добавляем решения к ошибкам
+	for i := range recentErrors {
+		recentErrors[i].RequestDetails["solutions"] = GetErrorSolutions(
+			recentErrors[i].ErrorType,
+			recentErrors[i].Component,
+		)
+	}
+
+	return &ErrorSummary{
+		RecentErrors:   recentErrors,
+		ErrorPatterns:  patterns,
+		TotalErrors:    total,
+		ErrorsLast24h:  last24h,
+		ErrorsLastHour: lastHour,
+		TopErrorTypes:  patterns, // Уже отсортированы по количеству
+	}, nil
 }
 
 // Типы ответов API
@@ -146,9 +235,6 @@ func (s *Statistics) GetStatisticsForPeriod(period string) (*StatisticsResponse,
 	now := time.Now().In(moscowLoc)
 	var since time.Time
 
-	// Отладочный вывод
-	fmt.Printf("GetStatisticsForPeriod: period=%s, current time (Moscow)=%v\n", period, now)
-
 	// Определяем начальное время периода
 	switch period {
 	case "15min":
@@ -169,11 +255,6 @@ func (s *Statistics) GetStatisticsForPeriod(period string) (*StatisticsResponse,
 	default:
 		return nil, fmt.Errorf("unknown period: %s", period)
 	}
-
-	// Отладочный вывод
-	fmt.Printf("Calculated since time (Moscow): %v\n", since)
-	fmt.Printf("Calculated since time (UTC): %v\n", since.UTC())
-	fmt.Printf("Is zero time: %v\n", since.IsZero())
 
 	// Получаем статистику из базы данных
 	stats, err := s.db.GetStatistics(since)
@@ -253,4 +334,9 @@ func formatDuration(duration time.Duration) string {
 	minutes := int(duration.Minutes()) % 60
 	seconds := int(duration.Seconds()) % 60
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+}
+
+// formatTime форматирует время в строку в формате ISO 8601
+func formatTime(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
 }

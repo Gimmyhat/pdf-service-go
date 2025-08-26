@@ -5,6 +5,7 @@ go 1.22.0
 toolchain go1.23.6
 
 require (
+	github.com/gin-contrib/gzip v0.0.6
 	github.com/gin-gonic/gin v1.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/stretchr/testify v1.10.0

@@ -6,6 +6,7 @@ import (
 	"pdf-service-go/internal/api/handlers"
 	"pdf-service-go/internal/domain/pdf"
 	"pdf-service-go/internal/pkg/logger"
+	"pdf-service-go/internal/pkg/statistics"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,15 +15,19 @@ import (
 
 // Handlers содержит все обработчики API
 type Handlers struct {
-	PDF        *handlers.PDFHandler
-	Statistics *handlers.StatisticsHandler
+	PDF             *handlers.PDFHandler
+	Statistics      *handlers.StatisticsHandler
+	Errors          *handlers.ErrorHandler
+	RequestAnalysis *handlers.RequestAnalysisHandler
 }
 
 // NewHandlers создает новые обработчики
 func NewHandlers(service pdf.Service) *Handlers {
 	return &Handlers{
-		PDF:        handlers.NewPDFHandler(service),
-		Statistics: handlers.NewStatisticsHandler(),
+		PDF:             handlers.NewPDFHandler(service),
+		Statistics:      handlers.NewStatisticsHandler(),
+		Errors:          handlers.NewErrorHandler(),
+		RequestAnalysis: handlers.NewRequestAnalysisHandler(statistics.GetPostgresDB()),
 	}
 }
 
@@ -63,13 +68,4 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handlers) GenerateDocx(c *gin.Context) {
-	var req pdf.DocxRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Error("Failed to parse request", zap.Error(err))
-		c.JSON(400, gin.H{"error": "Invalid request format"})
-		return
-	}
-
-	h.PDF.GenerateDocx(c)
-}
+// Deprecated: прямой хендлер GenerateDocx сохранён для обратной совместимости, но не используется маршрутизацией.

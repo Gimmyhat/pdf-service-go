@@ -36,7 +36,7 @@ func NewClient(baseURL string) *Client {
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
+		Timeout:   getEnvDurationWithDefault("GOTENBERG_CLIENT_TIMEOUT", 60 * time.Second),
 	}
 
 	return &Client{
@@ -93,15 +93,15 @@ func (c *Client) ConvertDocxToPDF(docxPath string) ([]byte, error) {
 
 	// Используем буферизированное копирование для улучшения производительности
 	copyBuf := make([]byte, 64*1024)
-	if _, copyErr := io.CopyBuffer(part, file, copyBuf); copyErr != nil {
+	if _, err := io.CopyBuffer(part, file, copyBuf); err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to copy file content: %w", copyErr)
+		return nil, fmt.Errorf("failed to copy file content: %w", err)
 	}
 
 	// Закрываем writer
-	if closeErr := writer.Close(); closeErr != nil {
+	if err := writer.Close(); err != nil {
 		metrics.GotenbergRequestsTotal.WithLabelValues("error").Inc()
-		return nil, fmt.Errorf("failed to close writer: %w", closeErr)
+		return nil, fmt.Errorf("failed to close writer: %w", err)
 	}
 
 	// Создаем запрос к Gotenberg с оптимизированными заголовками

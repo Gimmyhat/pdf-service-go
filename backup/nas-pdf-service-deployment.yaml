@@ -1,0 +1,157 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-pdf-service
+  namespace: print-serv
+  labels:
+    app: nas-pdf-service
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: pdf-service
+      app.kubernetes.io/name: pdf-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: pdf-service
+        app.kubernetes.io/name: pdf-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: nas-pdf-service
+        image: registry.devops.rgf.local/gimmyhat/pdf-service-go:25.08.15.1002
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POSTGRES_HOST
+          value: "nas-pdf-service-postgres"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: nas-pdf-service-postgres-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: nas-pdf-service-postgres-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: nas-pdf-service-postgres-config
+              key: POSTGRES_PASSWORD
+        - name: MAX_CONCURRENT_REQUESTS
+          value: "4"
+        - name: DOCX_TEMPLATE_CACHE_TTL
+          value: "5m"
+        - name: DOCX_CIRCUIT_BREAKER_FAILURE_THRESHOLD
+          value: "10"
+        - name: DOCX_CIRCUIT_BREAKER_RESET_TIMEOUT
+          value: "10s"
+        - name: DOCX_CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS
+          value: "5"
+        - name: DOCX_CIRCUIT_BREAKER_SUCCESS_THRESHOLD
+          value: "3"
+        - name: GOTENBERG_API_URL
+          value: "http://nas-pdf-service-gotenberg:3000"
+        - name: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+          value: "10"
+        - name: CIRCUIT_BREAKER_RESET_TIMEOUT
+          value: "10s"
+        - name: CIRCUIT_BREAKER_HALF_OPEN_MAX_CALLS
+          value: "5"
+        - name: CIRCUIT_BREAKER_SUCCESS_THRESHOLD
+          value: "3"
+        - name: DOCX_RETRY_MAX_ATTEMPTS
+          value: "2"
+        - name: DOCX_RETRY_INITIAL_DELAY
+          value: "50ms"
+        - name: DOCX_RETRY_MAX_DELAY
+          value: "200ms"
+        - name: DOCX_RETRY_BACKOFF_FACTOR
+          value: "1.5"
+        - name: GOTENBERG_RETRY_MAX_ATTEMPTS
+          value: "2"
+        - name: GOTENBERG_RETRY_INITIAL_DELAY
+          value: "25ms"
+        - name: GOTENBERG_RETRY_MAX_DELAY
+          value: "100ms"
+        - name: GOTENBERG_RETRY_BACKOFF_FACTOR
+          value: "1.5"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        envFrom:
+        - configMapRef:
+            name: nas-pdf-service-config
+        volumeMounts:
+        - name: templates
+          mountPath: /app/internal/domain/pdf/templates
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: stats-storage
+          mountPath: /app/data
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: templates
+        configMap:
+          name: nas-pdf-service-templates
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 2Gi
+      - name: stats-storage
+        persistentVolumeClaim:
+          claimName: nas-pdf-service-stats-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-pdf-service
+  namespace: print-serv
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: nas-pdf-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 31005
+  type: NodePort 

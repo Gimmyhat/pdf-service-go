@@ -10,6 +10,9 @@ import requests
 import PyPDF2
 from docx import Document
 from docx.shared import Inches
+import re # Добавляем импорт модуля регулярных выражений
+import time
+import traceback
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,24 +32,69 @@ def init_app(template_path):
         raise
 
 def format_date(date_str):
-    """Форматирует дату из строки ISO в формат DD.MM.YYYY."""
-    try:
-        if not date_str:
-            return ""
-        if isinstance(date_str, str):
+    """Форматирует дату из строки ISO в формат DD.MM.YYYY.
+       Если строка содержит только год (YYYY), возвращает год как есть.
+    """
+    if not date_str:
+        return ""
+
+    if isinstance(date_str, str):
+        # Убираем пробелы в начале и конце
+        date_str = date_str.strip()
+
+        # Проверяем, является ли строка просто годом (YYYY)
+        if re.fullmatch(r"\d{4}", date_str):
+            logger.info(f"Detected year-only format: '{date_str}'. Returning as is.")
+            return date_str
+        
+        # Если это не год, пытаемся обработать как ISO дату
+        try:
             # Удаляем миллисекунды, если они есть
             if '.' in date_str:
                 date_str = date_str.split('.')[0]
-            # Добавляем UTC если нет временной зоны
-            if 'Z' not in date_str and '+' not in date_str and '-' not in date_str:
-                date_str += 'Z'
-            date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-        else:
+            
+            # Добавляем Z (UTC), только если строка выглядит как дата/время без таймзоны
+            # и не является просто годом (проверка выше уже была)
+            if 'T' in date_str and 'Z' not in date_str and '+' not in date_str and '-' not in date_str.split('T')[-1]:
+                 # Добавляем Z только если есть 'T' и нет явной таймзоны
+                 logger.debug(f"Adding Z to date string: {date_str}")
+                 date_str += 'Z'
+            
+            # Заменяем Z на +00:00 для fromisoformat
+            if date_str.endswith('Z'):
+                 parse_str = date_str[:-1] + '+00:00'
+            else:
+                 parse_str = date_str
+
+            logger.debug(f"Attempting to parse as ISO: {parse_str}")
+            date_obj = datetime.fromisoformat(parse_str)
+            formatted_date = date_obj.strftime("%d.%m.%Y")
+            logger.info(f"Formatted date '{date_str}' to '{formatted_date}'")
+            return formatted_date
+        except ValueError as e:
+            # Если парсинг не удался, возвращаем исходную строку (без добавленного Z)
+            logger.error(f"Could not parse date string '{date_str}' as ISO: {e}. Returning original string.")
+            # Важно: возвращаем оригинальную строку до добавления Z, если она была добавлена
+            # Найдем оригинальную строку до модификаций внутри try
+            # Проще всего просто вернуть исходный аргумент функции в случае ошибки
+            # Но так как мы модифицируем date_str, нужна исходная копия
+            # Переделаем: будем работать с копией для парсинга
+            logger.warning(f"Returning original unparsed string: {date_str}") # Логируем что возвращаем оригинал
+            # Вернемся к исходной идее - если не парсится, возвращаем как есть
+            # Найдем способ вернуть строку до добавления Z
+            # Просто вернем исходный date_str на момент ошибки
+            return date_str # Возвращаем строку в том виде, в каком она вызвала ошибку
+        except Exception as e:
+            logger.error(f"Unexpected error formatting date '{date_str}': {e}", exc_info=True)
+            return date_str # Возвращаем строку в том виде, в каком она вызвала ошибку
+    else:
+        # Если это не строка, пытаемся преобразовать и обработать
+        try:
             date_obj = datetime.fromisoformat(str(date_str))
-        return date_obj.strftime("%d.%m.%Y")
-    except Exception as e:
-        logger.error("Error formatting date %s: %s", date_str, e)
-        return str(date_str)
+            return date_obj.strftime("%d.%m.%Y")
+        except Exception as e:
+            logger.error(f"Error formatting non-string date {date_str}: {e}")
+            return str(date_str)
 
 def generate_applicant_info(data):
     """Генерирует информацию о заявителе на основе данных запроса."""
@@ -81,7 +129,7 @@ def generate_applicant_info(data):
                 
         return ''
     except Exception as e:
-        logger.error("Error generating applicant info: %s", e)
+        logger.error(f"Error generating applicant info: {e}", exc_info=True)
         return ''
 
 def process_dates(data):
@@ -94,92 +142,7 @@ def process_dates(data):
             if 'informationDate' in item:
                 item['informationDate'] = format_date(item['informationDate'])
 
-def count_pdf_pages(docx_path):
-    """Конвертирует DOCX в PDF и считает страницы."""
-    try:
-        # URL для Gotenberg из переменной окружения или по умолчанию
-        gotenberg_url = os.getenv('GOTENBERG_URL', 'http://localhost:3000')
-        endpoint = f"{gotenberg_url}/forms/libreoffice/convert"
-
-        logger.info(f"Converting {docx_path} to PDF using Gotenberg at {endpoint}")
-        logger.info(f"DOCX file size: {os.path.getsize(docx_path)} bytes")
-        
-        # Готовим файл для отправки
-        with open(docx_path, 'rb') as f:
-            files = {'file': (os.path.basename(docx_path), f, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
-            
-            # Отправляем запрос в Gotenberg
-            logger.info("Sending request to Gotenberg...")
-            response = requests.post(endpoint, files=files)
-            logger.info(f"Gotenberg response status: {response.status_code}")
-            
-            if response.status_code == 200:
-                # Сохраняем PDF во временный файл
-                pdf_path = str(Path(docx_path).with_suffix('.pdf'))
-                with open(pdf_path, 'wb') as f:
-                    f.write(response.content)
-                
-                pdf_size = os.path.getsize(pdf_path)
-                logger.info(f"Generated PDF size: {pdf_size} bytes")
-                
-                # Читаем количество страниц из PDF
-                with open(pdf_path, 'rb') as f:
-                    pdf = PyPDF2.PdfReader(f)
-                    num_pages = len(pdf.pages)
-                    logger.info(f"PDF page count: {num_pages}")
-                    
-                    # Проверяем размер первой и последней страницы
-                    first_page = pdf.pages[0]
-                    last_page = pdf.pages[-1]
-                    logger.info(f"First page size: {first_page.mediabox}")
-                    logger.info(f"Last page size: {last_page.mediabox}")
-                
-                # Удаляем временный PDF файл
-                os.remove(pdf_path)
-                return num_pages
-            else:
-                logger.error(f"Gotenberg conversion failed: {response.status_code}")
-                if response.content:
-                    logger.error(f"Gotenberg error: {response.content.decode('utf-8', errors='ignore')}")
-                return None
-    except Exception as e:
-        logger.error(f"Error converting to PDF: {e}", exc_info=True)
-        return None
-
-def count_docx_pages(docx_path):
-    """Подсчет страниц в DOCX файле напрямую."""
-    try:
-        doc = Document(docx_path)
-        
-        # Получаем размер страницы из секций документа
-        section = doc.sections[0]
-        page_height = section.page_height
-        page_margin_top = section.top_margin
-        page_margin_bottom = section.bottom_margin
-        available_height = page_height - page_margin_top - page_margin_bottom
-        
-        total_height = 0
-        for paragraph in doc.paragraphs:
-            # Учитываем высоту каждого параграфа
-            if paragraph.runs:  # Если параграф не пустой
-                total_height += paragraph.runs[0].font.size or 12  # Размер шрифта в твипах
-        
-        # Учитываем таблицы
-        for table in doc.tables:
-            for row in table.rows:
-                total_height += row.height or Inches(0.3)  # Примерная высота строки
-        
-        # Конвертируем твипы в дюймы и считаем страницы
-        total_pages = int((total_height / 20) / (available_height / 914400) + 0.5)  # 914400 твипов = 1 дюйм
-        
-        logger.info(f"DOCX direct page count: {total_pages}")
-        return max(1, total_pages)  # Минимум 1 страница
-        
-    except Exception as e:
-        logger.error(f"Error counting DOCX pages directly: {e}", exc_info=True)
-        return None
-
-def process_template(data, output_path):
+def process_template(data, output_path, timings=None):
     """Обработка шаблона и сохранение результата."""
     global TEMPLATE
     
@@ -188,38 +151,91 @@ def process_template(data, output_path):
         raise ValueError("Template not initialized")
         
     try:
+        # Проверяем, является ли это черновиком для подсчета страниц
+        is_draft = data.get('isDraft', False)
+        if is_draft:
+            logger.info("Processing DRAFT document for page counting")
+        else:
+            logger.info("Processing FINAL document with page count")
+        
         # Обрабатываем даты и генерируем информацию о заявителе
+        t_pd_start = time.time()
         process_dates(data)
+        if timings is not None:
+            timings.append({"stage": "process_dates", "ms": round((time.time() - t_pd_start) * 1000, 2)})
+        t_ai_start = time.time()
         data['applicant_info'] = generate_applicant_info(data)
+        if timings is not None:
+            timings.append({"stage": "generate_applicant_info", "ms": round((time.time() - t_ai_start) * 1000, 2)})
         
-        # Первый рендеринг с временным значением num_pages
-        data['num_pages'] = 0
-        logger.info("First render with num_pages = 0")
-        TEMPLATE.render(data)
-        TEMPLATE.save(output_path)
-        
-        # Пробуем получить количество страниц напрямую из DOCX
-        pages = count_docx_pages(output_path)
-        
-        # Если не получилось, используем метод через PDF
-        if pages is None:
-            logger.info("Falling back to PDF page counting method")
-            pages = count_pdf_pages(output_path)
+        # Создаем укороченный ID без текста ЕФГИ
+        if 'id' in data:
+            # Используем ID
+            full_id = data.get('id', '')
+            short_id = full_id
             
-        if pages is not None:
-            # Вычитаем 1 страницу (сопроводительная записка)
-            data['num_pages'] = pages - 1
-            logger.info(f"Second render with page count (excluding cover): {pages-1}")
+            # Если ID начинается с "ЕФГИ-", берем часть строки с 5-го символа
+            if full_id and full_id.startswith("ЕФГИ-"):
+                short_id = full_id[5:]  # Получаем строку начиная с 5-го символа (после "ЕФГИ-")
+                logger.info(f"Extracted short ID: '{short_id}' from full ID: '{full_id}'")
+            else:
+                logger.info(f"ID '{full_id}' does not start with 'ЕФГИ-', keeping original")
+            
+            data['short_id'] = short_id
+        
+        # Устанавливаем количество страниц для отображения
+        # Для черновика устанавливаем заглушку, для финала - используем счетчик
+        if is_draft:
+            # В черновике просто используем заглушку, т.к. этот документ только для подсчета
+            data['display_pages'] = "[Подсчет страниц...]"
+            logger.info(f"Using placeholder for page count in draft document")
+        else:
+            # В финальном документе используем реальное количество страниц
+            page_count = data.get('pages', 0)
+            
+            # Вычитаем еще одну страницу для отображения (сопроводительная записка)
+            display_count = max(1, page_count - 1)
+            
+            # Логика отображения: 
+            # Если 1 страница - "на 1 листе"
+            # Для остальных случаев - "на X листах"
+            if display_count == 1:
+                data['display_pages'] = "на 1 листе"
+            else:
+                data['display_pages'] = f"на {display_count} листах"
+            
+            logger.info(f"Setting display pages to: '{data['display_pages']}', actual page count: {page_count}, display count: {display_count}")
+        
+        # Логируем все переменные для отладки
+        logger.info("Template variables:")
+        logger.info(f"id: {data.get('id', 'NOT FOUND')}")
+        logger.info(f"short_id: {data.get('short_id', 'NOT FOUND')}")
+        logger.info(f"creationDate: {data.get('creationDate', 'NOT FOUND')}")
+        logger.info(f"isDraft: {is_draft}")
+        logger.info(f"pages: {data.get('pages', 0)}")
+        logger.info(f"display_pages: {data.get('display_pages', 'NOT SET')}")
+        logger.info(f"status: {data.get('status', 'NOT SET')}")
+        
+        try:
+            # Рендерим документ
+            t_render_start = time.time()
             TEMPLATE.render(data)
+            render_ms = round((time.time() - t_render_start) * 1000, 2)
+            if timings is not None:
+                timings.append({"stage": "render", "ms": render_ms})
+
+            t_save_start = time.time()
             TEMPLATE.save(output_path)
+            save_ms = round((time.time() - t_save_start) * 1000, 2)
+            if timings is not None:
+                timings.append({"stage": "save", "ms": save_ms})
             logger.info("Document generated successfully")
             return True
-        else:
-            logger.error("Could not determine page count")
+        except Exception as e:
+            logger.error(f"Error rendering template: {e}", exc_info=True)
             return False
-            
     except Exception as e:
-        logger.error(f"Error processing template: {e}")
+        logger.error(f"Error processing template: {e}", exc_info=True)
         return False
 
 def main():
@@ -233,16 +249,42 @@ def main():
 
     try:
         # Инициализируем шаблон при старте
+        t0 = time.time()
         init_app(template_path)
+        init_ms = round((time.time() - t0) * 1000, 2)
 
         # Читаем данные
+        t_read_start = time.time()
         with open(data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        read_ms = round((time.time() - t_read_start) * 1000, 2)
     except Exception as e:
         logger.error("Error during initialization: %s", e)
         sys.exit(1)
 
-    if not process_template(data, output_path):
+    timings = []
+    timings.append({"stage": "init_app", "ms": init_ms})
+    timings.append({"stage": "read_input", "ms": read_ms})
+
+    t_proc_start = time.time()
+    ok = process_template(data, output_path, timings)
+    total_ms = round((time.time() - t0) * 1000, 2)
+
+    # Пишем тайминги в stdout и в файл рядом с выходным DOCX
+    try:
+        summary = {
+            "total_ms": total_ms,
+            "stages": timings
+        }
+        logger.info("DOCX generation timings: %s", json.dumps(summary, ensure_ascii=False))
+        timings_path = output_path + ".timings.json"
+        with open(timings_path, 'w', encoding='utf-8') as tf:
+            json.dump(summary, tf, ensure_ascii=False, indent=2)
+        print(f"TIMINGS_FILE={timings_path}")
+    except Exception:
+        traceback.print_exc()
+
+    if not ok:
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -46,6 +46,11 @@ make deploy ENV=prod
 # Деплой с конкретной версией
 make deploy ENV=test VERSION=<версия>
 make deploy ENV=prod VERSION=<версия>
+
+# Обновление шаблона в Kubernetes
+make update-template
+# Для обновления шаблона в другом окружении
+make update-template ENV=prod
 ```
 
 ### Деплой хранилища

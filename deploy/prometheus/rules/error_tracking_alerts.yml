@@ -1,0 +1,135 @@
+groups:
+  - name: error_tracking_alerts
+    rules:
+      - alert: CriticalErrorsDetected
+        expr: |
+          sum(
+            increase(error_logs_total{severity="critical"}[5m])
+          ) > 3
+        for: 1m
+        labels:
+          severity: critical
+          component: "error-tracking"
+        annotations:
+          summary: "Критические ошибки обнаружены в системе"
+          description: "Зафиксировано {{ $value }} критических ошибок за последние 5 минут"
+          runbook_url: "https://wiki.example.com/runbooks/critical-errors"
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(error_logs_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: "error-tracking"
+        annotations:
+          summary: "Высокий уровень ошибок в системе"
+          description: "Частота ошибок составляет {{ $value }} ошибок в секунду за последние 5 минут"
+
+      - alert: ComponentErrorSpike
+        expr: |
+          sum by (component) (
+            rate(error_logs_total[5m])
+          ) > 0.2
+        for: 3m
+        labels:
+          severity: warning
+          component: "error-tracking"
+        annotations:
+          summary: "Всплеск ошибок в компоненте {{ $labels.component }}"
+          description: "Компонент {{ $labels.component }} генерирует {{ $value }} ошибок в секунду"
+
+      - alert: PanicErrorsDetected
+        expr: |
+          sum(
+            increase(error_logs_total{error_type="panic"}[10m])
+          ) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: "error-tracking"
+        annotations:
+          summary: "Обнаружены panic ошибки"
+          description: "Зафиксировано {{ $value }} panic ошибок за последние 10 минут - требуется немедленное вмешательство"
+          
+      - alert: DatabaseErrorsIncreasing
+        expr: |
+          sum(
+            increase(error_logs_total{component="database"}[10m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: "database"
+        annotations:
+          summary: "Увеличение ошибок базы данных"
+          description: "Зафиксировано {{ $value }} ошибок базы данных за последние 10 минут"
+
+      - alert: GotenbergTimeouts
+        expr: |
+          sum(
+            increase(error_logs_total{component="gotenberg",error_type="timeout"}[15m])
+          ) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: "gotenberg"
+        annotations:
+          summary: "Множественные таймауты Gotenberg"
+          description: "Зафиксировано {{ $value }} таймаутов Gotenberg за последние 15 минут"
+
+      - alert: APIValidationErrors
+        expr: |
+          sum(
+            rate(error_logs_total{component="api",error_type="validation"}[10m])
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: info
+          component: "api"
+        annotations:
+          summary: "Высокий уровень ошибок валидации API"
+          description: "Частота ошибок валидации API составляет {{ $value }} в секунду - возможны проблемы с клиентскими запросами"
+
+      - alert: SystemHealthDegraded
+        expr: |
+          (
+            sum(increase(error_logs_total{severity=~"critical|high"}[1h])) > 10
+          ) or (
+            sum(increase(error_logs_total[1h])) > 100
+          )
+        for: 5m
+        labels:
+          severity: warning
+          component: "system"
+        annotations:
+          summary: "Деградация состояния системы"
+          description: "Система показывает признаки деградации: {{ $value }} серьезных ошибок за последний час"
+
+      - alert: ErrorPatternDetected
+        expr: |
+          sum by (error_type, component) (
+            increase(error_logs_total[30m])
+          ) > 10
+        for: 10m
+        labels:
+          severity: info
+          component: "pattern-detection"
+        annotations:
+          summary: "Обнаружен паттерн ошибок"
+          description: "Компонент {{ $labels.component }} показывает паттерн ошибок типа {{ $labels.error_type }}: {{ $value }} ошибок за 30 минут"
+
+      - alert: NoErrorLogsReceived
+        expr: |
+          (
+            sum(increase(error_logs_total[1h])) == 0
+          ) and (
+            sum(increase(http_requests_total[1h])) > 100
+          )
+        for: 30m
+        labels:
+          severity: warning
+          component: "error-tracking"
+        annotations:
+          summary: "Система отслеживания ошибок не получает данные"
+          description: "За последний час не получено ни одной записи об ошибках при активности системы - возможна проблема с логированием"

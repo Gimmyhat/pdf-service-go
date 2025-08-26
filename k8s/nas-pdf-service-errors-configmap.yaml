@@ -1,0 +1,185 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nas-pdf-service-errors-static
+  namespace: print-serv
+data:
+  errors.html: |
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PDF Service - Error Analysis</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            .error-card {
+                margin-bottom: 1rem;
+                border-left: 4px solid #dc3545;
+            }
+            .error-card.warning {
+                border-left-color: #ffc107;
+            }
+            .error-card.critical {
+                border-left-color: #dc3545;
+                background-color: #fff5f5;
+            }
+            .error-card.medium {
+                border-left-color: #fd7e14;
+            }
+            .error-card.low {
+                border-left-color: #6c757d;
+            }
+            .error-badge {
+                font-size: 0.8rem;
+            }
+            .stack-trace {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 1rem;
+                font-family: 'Courier New', monospace;
+                font-size: 0.85rem;
+                max-height: 200px;
+                overflow-y: auto;
+                white-space: pre-wrap;
+            }
+            .filter-card {
+                background-color: #f8f9fa;
+                border: none;
+                margin-bottom: 1rem;
+            }
+            .solution-list {
+                background-color: #d1ecf1;
+                border: 1px solid #bee5eb;
+                border-radius: 4px;
+                padding: 1rem;
+                margin-top: 1rem;
+            }
+            .solution-list h6 {
+                color: #0c5460;
+                margin-bottom: 0.5rem;
+            }
+            .solution-list ul {
+                margin-bottom: 0;
+                color: #0c5460;
+            }
+            .health-indicator {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 5px;
+            }
+            .health-healthy { background-color: #28a745; }
+            .health-warning { background-color: #ffc107; }
+            .health-critical { background-color: #dc3545; }
+            .health-degraded { background-color: #fd7e14; }
+            
+            .jaeger-link {
+                color: #007bff;
+                text-decoration: none;
+                font-size: 0.9rem;
+            }
+            .jaeger-link:hover {
+                text-decoration: underline;
+            }
+            
+            .refresh-button {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                z-index: 1000;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container-fluid mt-3">
+            <div class="row">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h1><i class="bi bi-exclamation-triangle"></i> Error Analysis Dashboard</h1>
+                        <div class="d-flex gap-2">
+                            <a href="/stats" class="btn btn-outline-primary">
+                                <i class="bi bi-graph-up"></i> Statistics
+                            </a>
+                            <button class="btn btn-primary" onclick="refreshData()">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Временное сообщение -->
+                    <div class="alert alert-info" role="alert">
+                        <h4 class="alert-heading">🚧 Система отслеживания ошибок</h4>
+                        <p>Новая система детального отслеживания и анализа ошибок готова к развертыванию!</p>
+                        <hr>
+                        <p class="mb-0">
+                            <strong>Что уже реализовано:</strong><br>
+                            ✅ Детальная база данных ошибок<br>
+                            ✅ API для анализа ошибок<br>
+                            ✅ Автоматические решения проблем<br>
+                            ✅ Интеграция с Jaeger трейсингом<br>
+                            ✅ Веб-интерфейс для диагностики<br><br>
+                            <strong>Статус:</strong> Ожидает развертывания новой версии сервиса
+                        </p>
+                    </div>
+
+                    <!-- Тестовые endpoint'ы -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Тестирование API</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>Пока система развертывается, вы можете протестировать доступные endpoint'ы:</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Текущие endpoint'ы:</h6>
+                                    <ul class="list-group">
+                                        <li class="list-group-item">
+                                            <a href="/health" target="_blank">/health</a> - Статус сервиса
+                                        </li>
+                                        <li class="list-group-item">
+                                            <a href="/stats" target="_blank">/stats</a> - Текущая статистика
+                                        </li>
+                                        <li class="list-group-item">
+                                            <a href="/metrics" target="_blank">/metrics</a> - Prometheus метрики
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Новые endpoint'ы (после развертывания):</h6>
+                                    <ul class="list-group">
+                                        <li class="list-group-item text-muted">
+                                            /api/v1/errors - Детальные ошибки
+                                        </li>
+                                        <li class="list-group-item text-muted">
+                                            /api/v1/errors/stats - Статистика ошибок
+                                        </li>
+                                        <li class="list-group-item text-muted">
+                                            /test-error - Тест генерации ошибок
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            console.log('Error Analysis Dashboard - Awaiting deployment');
+            
+            function refreshData() {
+                location.reload();
+            }
+        </script>
+    </body>
+    </html>
+
+  errors.js: |
+    // Error Analysis Dashboard JavaScript - Placeholder
+    console.log('Error tracking system ready for deployment');

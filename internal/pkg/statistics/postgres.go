@@ -2,6 +2,7 @@ package statistics
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -76,10 +77,34 @@ func (p *PostgresDB) InitSchema() error {
 			size_bytes BIGINT NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS error_logs (
+			id SERIAL PRIMARY KEY,
+			timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+			request_id TEXT,
+			trace_id TEXT,
+			span_id TEXT,
+			error_type TEXT NOT NULL,
+			component TEXT NOT NULL,
+			message TEXT NOT NULL,
+			stack_trace TEXT,
+			request_details JSONB,
+			client_ip TEXT,
+			user_agent TEXT,
+			http_method TEXT,
+			http_path TEXT,
+			http_status INTEGER,
+			duration_ns BIGINT,
+			severity TEXT NOT NULL
+		);
+
 		CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_docx_logs_timestamp ON docx_logs(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_gotenberg_logs_timestamp ON gotenberg_logs(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_pdf_logs_timestamp ON pdf_logs(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_error_logs_type ON error_logs(error_type);
+		CREATE INDEX IF NOT EXISTS idx_error_logs_component ON error_logs(component);
+		CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity);
 	`)
 
 	if err != nil {
@@ -127,12 +152,10 @@ func (p *PostgresDB) LogPDF(timestamp time.Time, size int64) error {
 
 // GetStatistics возвращает статистику за указанный период
 func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
-	// Отладочный вывод для проверки времени
-	fmt.Printf("\n=== GetStatistics Debug ===\n")
-	fmt.Printf("Input time: %v\n", since)
-	fmt.Printf("Input time UTC: %v\n", since.UTC())
-	fmt.Printf("Input time Unix: %d\n", since.Unix())
-	fmt.Printf("Is zero time: %v\n", since.IsZero())
+	// Отладочный вывод только для нулевой даты или необычных случаев
+	if since.IsZero() {
+		fmt.Printf("GetStatistics: using no time filter (all data)\n")
+	}
 
 	stats := &Stats{
 		Requests: RequestStats{
@@ -151,11 +174,9 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 	if since.IsZero() {
 		whereClause = ""
 		params = []interface{}{}
-		fmt.Printf("\nUsing no time filter (all data)\n")
 	} else {
 		whereClause = "WHERE timestamp >= $1"
 		params = []interface{}{since.UTC()}
-		fmt.Printf("\nUsing time filter: >= %v\n", since.UTC())
 	}
 
 	// Сначала проверим наличие данных в таблице
@@ -166,17 +187,10 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("\nChecking data availability with query: %s\n", checkQuery)
-	if len(params) > 0 {
-		fmt.Printf("Parameters: %v\n", params)
-	}
-
 	checkErr := p.db.QueryRow(checkQuery, params...).Scan(&totalCount)
 	if checkErr != nil {
-		fmt.Printf("Error checking data: %v\n", checkErr)
 		return nil, checkErr
 	}
-	fmt.Printf("Total records found: %d\n", totalCount)
 
 	// Проверим временной диапазон данных
 	var minTs, maxTs sql.NullTime
@@ -186,16 +200,9 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("\nChecking time range with query: %s\n", rangeQuery)
 	rangeErr := p.db.QueryRow(rangeQuery, params...).Scan(&minTs, &maxTs)
 	if rangeErr != nil {
-		fmt.Printf("Error checking time range: %v\n", rangeErr)
 		return nil, rangeErr
-	}
-	if minTs.Valid && maxTs.Valid {
-		fmt.Printf("Time range: from %v to %v\n", minTs.Time, maxTs.Time)
-	} else {
-		fmt.Printf("No time range data available\n")
 	}
 
 	// Запрашиваем статистику запросов
@@ -211,8 +218,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		FROM request_logs
 		%s
 	`, whereClause)
-
-	fmt.Printf("Executing request query: %s with params: %v\n", requestQuery, params)
 
 	var row *sql.Row
 	if len(params) > 0 {
@@ -248,8 +253,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("Executing DOCX query: %s with params: %v\n", docxQuery, params)
-
 	if len(params) > 0 {
 		row = p.db.QueryRow(docxQuery, params...)
 	} else {
@@ -282,8 +285,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		%s
 	`, whereClause)
 
-	fmt.Printf("Executing Gotenberg query: %s with params: %v\n", gotenbergQuery, params)
-
 	if len(params) > 0 {
 		row = p.db.QueryRow(gotenbergQuery, params...)
 	} else {
@@ -314,8 +315,6 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		FROM pdf_logs
 		%s
 	`, whereClause)
-
-	fmt.Printf("Executing PDF query: %s with params: %v\n", pdfQuery, params)
 
 	if len(params) > 0 {
 		row = p.db.QueryRow(pdfQuery, params...)
@@ -399,32 +398,45 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 
 	// Запрашиваем распределение по дням недели
 	dayQuery := fmt.Sprintf(`
+		WITH day_counts AS (
+			SELECT 
+				EXTRACT(DOW FROM timestamp) as day_number,
+				COUNT(*) as count,
+				MAX(timestamp) as utc_time
+			FROM request_logs
+			%s
+			GROUP BY EXTRACT(DOW FROM timestamp)
+		)
 		SELECT 
-			EXTRACT(DOW FROM timestamp)::int as day_number,
-			COUNT(*) as count,
-			MAX(timestamp) as utc_time
-		FROM request_logs
-		%s
-		GROUP BY EXTRACT(DOW FROM timestamp)::int
+			day_number,
+			count,
+			utc_time
+		FROM day_counts
 		ORDER BY day_number
 	`, whereClause)
 
-	fmt.Printf("Executing day query: %s with params: %v\n", dayQuery, params)
-
-	rows, err := p.db.Query(dayQuery, params...)
-	if err != nil {
-		return nil, fmt.Errorf("error querying day stats: %w", err)
+	var dayRows *sql.Rows
+	var dayErr error
+	if len(params) > 0 {
+		dayRows, dayErr = p.db.Query(dayQuery, params...)
+	} else {
+		dayRows, dayErr = p.db.Query(dayQuery)
 	}
-	defer rows.Close()
+	if dayErr != nil {
+		return nil, fmt.Errorf("error querying days: %w", dayErr)
+	}
+	defer dayRows.Close()
 
-	for rows.Next() {
-		var dayNumber int
+	for dayRows.Next() {
+		var dayNumber float64
 		var count uint64
-		var utcTime sql.NullTime
-		if scanErr := rows.Scan(&dayNumber, &count, &utcTime); scanErr != nil {
-			return nil, fmt.Errorf("error scanning day stats: %w", scanErr)
+		var utcTime time.Time
+		if err := dayRows.Scan(&dayNumber, &count, &utcTime); err != nil {
+			return nil, fmt.Errorf("error scanning day row: %w", err)
 		}
-		stats.Requests.RequestsByDay[time.Weekday(dayNumber)] = count
+
+		day := time.Weekday(int(dayNumber))
+		stats.Requests.RequestsByDay[day] = count
 	}
 
 	// Запрашиваем распределение по часам
@@ -442,36 +454,27 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 		ORDER BY hour
 	`, whereClause)
 
-	fmt.Printf("Executing hour query: %s with params: %v\n", hourQuery, params)
-
+	var hourRows *sql.Rows
+	var hourErr error
 	if len(params) > 0 {
-		rows, err = p.db.Query(hourQuery, params...)
+		hourRows, hourErr = p.db.Query(hourQuery, params...)
 	} else {
-		rows, err = p.db.Query(hourQuery)
+		hourRows, hourErr = p.db.Query(hourQuery)
 	}
-	if err != nil {
-		return nil, err
+	if hourErr != nil {
+		return nil, hourErr
 	}
-	defer rows.Close()
+	defer hourRows.Close()
 
-	for rows.Next() {
+	for hourRows.Next() {
 		var hourFloat float64
 		var count uint64
-		if err := rows.Scan(&hourFloat, &count); err != nil {
+		if err := hourRows.Scan(&hourFloat, &count); err != nil {
 			return nil, err
 		}
 		hour := int(hourFloat)
 		stats.Requests.RequestsByHour[hour] = count
 	}
-
-	// Добавляем отладочный вывод перед возвратом результатов
-	fmt.Printf("\n=== Statistics Summary ===\n")
-	fmt.Printf("Total Requests: %d\n", stats.Requests.TotalRequests)
-	fmt.Printf("Success Requests: %d\n", stats.Requests.SuccessRequests)
-	fmt.Printf("Failed Requests: %d\n", stats.Requests.FailedRequests)
-	fmt.Printf("Requests by Day: %v\n", stats.Requests.RequestsByDay)
-	fmt.Printf("Requests by Hour: %v\n", stats.Requests.RequestsByHour)
-	fmt.Printf("=== End of GetStatistics ===\n\n")
 
 	return stats, nil
 }
@@ -479,4 +482,484 @@ func (p *PostgresDB) GetStatistics(since time.Time) (*Stats, error) {
 // Close закрывает соединение с базой данных
 func (p *PostgresDB) Close() error {
 	return p.db.Close()
+}
+
+// LogError записывает детальную информацию об ошибке
+func (p *PostgresDB) LogError(errorDetails *ErrorDetails) error {
+	requestDetailsJSON, err := json.Marshal(errorDetails.RequestDetails)
+	if err != nil {
+		requestDetailsJSON = []byte("{}")
+	}
+
+	_, err = p.db.Exec(`
+		INSERT INTO error_logs (
+			timestamp, request_id, trace_id, span_id, error_type, component, 
+			message, stack_trace, request_details, client_ip, user_agent, 
+			http_method, http_path, http_status, duration_ns, severity
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		errorDetails.Timestamp.UTC(),
+		errorDetails.RequestID,
+		errorDetails.TraceID,
+		errorDetails.SpanID,
+		errorDetails.ErrorType,
+		errorDetails.Component,
+		errorDetails.Message,
+		errorDetails.StackTrace,
+		requestDetailsJSON,
+		errorDetails.ClientIP,
+		errorDetails.UserAgent,
+		errorDetails.HTTPMethod,
+		errorDetails.HTTPPath,
+		errorDetails.HTTPStatus,
+		errorDetails.Duration.Nanoseconds(),
+		errorDetails.Severity,
+	)
+	return err
+}
+
+// GetRecentErrors возвращает последние ошибки (гибридный подход)
+func (p *PostgresDB) GetRecentErrors(limit int, since time.Time) ([]ErrorDetails, error) {
+	var allErrors []ErrorDetails
+
+	// === ПОЛУЧАЕМ ERROR TRACKING ОШИБКИ (новая система) ===
+	trackingErrors, err := p.getTrackingErrors(limit, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tracking errors: %w", err)
+	}
+	allErrors = append(allErrors, trackingErrors...)
+
+	// === ПОЛУЧАЕМ СТАТИСТИЧЕСКИЕ ОШИБКИ (историческая система) ===
+	statisticalErrors, err := p.getStatisticalErrors(limit, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get statistical errors: %w", err)
+	}
+	allErrors = append(allErrors, statisticalErrors...)
+
+	// === СОРТИРУЕМ ПО ВРЕМЕНИ И ОГРАНИЧИВАЕМ ===
+	// Сортируем по убыванию времени (новые сначала)
+	for i := 0; i < len(allErrors)-1; i++ {
+		for j := i + 1; j < len(allErrors); j++ {
+			if allErrors[i].Timestamp.Before(allErrors[j].Timestamp) {
+				allErrors[i], allErrors[j] = allErrors[j], allErrors[i]
+			}
+		}
+	}
+
+	// Ограничиваем количество
+	if len(allErrors) > limit {
+		allErrors = allErrors[:limit]
+	}
+
+	return allErrors, nil
+}
+
+// GetErrorPatterns возвращает паттерны ошибок для анализа
+func (p *PostgresDB) GetErrorPatterns(since time.Time) ([]ErrorPattern, error) {
+	rows, err := p.db.Query(`
+		SELECT 
+			error_type,
+			component,
+			COUNT(*) as count,
+			MAX(timestamp) as last_occurred,
+			AVG(duration_ns) as avg_duration_ns
+		FROM error_logs
+		WHERE timestamp >= $1
+		GROUP BY error_type, component
+		ORDER BY count DESC
+	`, since.UTC())
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var patterns []ErrorPattern
+	for rows.Next() {
+		var p ErrorPattern
+		var avgDurationNs int64
+
+		err := rows.Scan(
+			&p.ErrorType, &p.Component, &p.Count,
+			&p.LastOccured, &avgDurationNs,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		p.AvgDuration = time.Duration(avgDurationNs)
+
+		// Определяем частоту
+		hours := time.Since(since).Hours()
+		if hours > 0 {
+			frequency := float64(p.Count) / hours
+			if frequency >= 1 {
+				p.Frequency = fmt.Sprintf("%.1f/hour", frequency)
+			} else {
+				p.Frequency = fmt.Sprintf("%.1f/day", frequency*24)
+			}
+		}
+
+		// Простое определение тренда (можно улучшить)
+		if p.Count > 10 {
+			p.Trend = "high"
+		} else if p.Count > 5 {
+			p.Trend = "medium"
+		} else {
+			p.Trend = "low"
+		}
+
+		patterns = append(patterns, p)
+	}
+
+	return patterns, nil
+}
+
+// GetErrorCounts возвращает количество ошибок за разные периоды (гибридный подход)
+func (p *PostgresDB) GetErrorCounts() (total, last24h, lastHour int64, err error) {
+	now := time.Now()
+	last24Hours := now.Add(-24 * time.Hour)
+	lastHourTime := now.Add(-1 * time.Hour)
+
+	// === ERROR TRACKING ОШИБКИ (новая система) ===
+	var trackingTotal, tracking24h, trackingHour int64
+
+	// Общее количество из error_logs
+	err = p.db.QueryRow("SELECT COUNT(*) FROM error_logs").Scan(&trackingTotal)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count tracking errors: %w", err)
+	}
+
+	// За последние 24 часа из error_logs
+	err = p.db.QueryRow("SELECT COUNT(*) FROM error_logs WHERE timestamp >= $1", last24Hours.UTC()).Scan(&tracking24h)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count tracking errors 24h: %w", err)
+	}
+
+	// За последний час из error_logs
+	err = p.db.QueryRow("SELECT COUNT(*) FROM error_logs WHERE timestamp >= $1", lastHourTime.UTC()).Scan(&trackingHour)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count tracking errors 1h: %w", err)
+	}
+
+	// === СТАТИСТИЧЕСКИЕ ОШИБКИ (историческая система) ===
+	var statTotal, stat24h, statHour int64
+
+	// Общее количество статистических ошибок
+	err = p.db.QueryRow(`
+		SELECT 
+			COALESCE((SELECT COUNT(*) FROM request_logs WHERE success = false), 0) +
+			COALESCE((SELECT COUNT(*) FROM docx_logs WHERE has_error = true), 0) +
+			COALESCE((SELECT COUNT(*) FROM gotenberg_logs WHERE has_error = true), 0)
+	`).Scan(&statTotal)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count statistical errors: %w", err)
+	}
+
+	// За последние 24 часа статистических ошибок
+	err = p.db.QueryRow(`
+		SELECT 
+			COALESCE((SELECT COUNT(*) FROM request_logs WHERE success = false AND timestamp >= $1), 0) +
+			COALESCE((SELECT COUNT(*) FROM docx_logs WHERE has_error = true AND timestamp >= $1), 0) +
+			COALESCE((SELECT COUNT(*) FROM gotenberg_logs WHERE has_error = true AND timestamp >= $1), 0)
+	`, last24Hours.UTC()).Scan(&stat24h)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count statistical errors 24h: %w", err)
+	}
+
+	// За последний час статистических ошибок
+	err = p.db.QueryRow(`
+		SELECT 
+			COALESCE((SELECT COUNT(*) FROM request_logs WHERE success = false AND timestamp >= $1), 0) +
+			COALESCE((SELECT COUNT(*) FROM docx_logs WHERE has_error = true AND timestamp >= $1), 0) +
+			COALESCE((SELECT COUNT(*) FROM gotenberg_logs WHERE has_error = true AND timestamp >= $1), 0)
+	`, lastHourTime.UTC()).Scan(&statHour)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to count statistical errors 1h: %w", err)
+	}
+
+	// === ОБЪЕДИНЯЕМ РЕЗУЛЬТАТЫ ===
+	total = trackingTotal + statTotal
+	last24h = tracking24h + stat24h
+	lastHour = trackingHour + statHour
+
+	return total, last24h, lastHour, nil
+}
+
+// getTrackingErrors получает ошибки из error_logs (новая система)
+func (p *PostgresDB) getTrackingErrors(limit int, since time.Time) ([]ErrorDetails, error) {
+	rows, err := p.db.Query(`
+		SELECT 
+			id, timestamp, request_id, trace_id, span_id, error_type, component,
+			message, stack_trace, request_details, client_ip, user_agent,
+			http_method, http_path, http_status, duration_ns, severity
+		FROM error_logs
+		WHERE timestamp >= $1
+		ORDER BY timestamp DESC
+		LIMIT $2
+	`, since.UTC(), limit)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var errors []ErrorDetails
+	for rows.Next() {
+		var e ErrorDetails
+		var requestDetailsJSON []byte
+		var durationNs int64
+
+		err := rows.Scan(
+			&e.ID, &e.Timestamp, &e.RequestID, &e.TraceID, &e.SpanID,
+			&e.ErrorType, &e.Component, &e.Message, &e.StackTrace,
+			&requestDetailsJSON, &e.ClientIP, &e.UserAgent,
+			&e.HTTPMethod, &e.HTTPPath, &e.HTTPStatus, &durationNs, &e.Severity,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		e.Duration = time.Duration(durationNs)
+		if len(requestDetailsJSON) > 0 {
+			json.Unmarshal(requestDetailsJSON, &e.RequestDetails)
+		}
+
+		errors = append(errors, e)
+	}
+
+	return errors, nil
+}
+
+// getStatisticalErrors получает ошибки из статистических таблиц (историческая система)
+func (p *PostgresDB) getStatisticalErrors(limit int, since time.Time) ([]ErrorDetails, error) {
+	var errors []ErrorDetails
+
+	// === ОШИБКИ ИЗ REQUEST_LOGS ===
+	requestErrors, err := p.getRequestErrors(limit/3, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get request errors: %w", err)
+	}
+	errors = append(errors, requestErrors...)
+
+	// === ОШИБКИ ИЗ DOCX_LOGS ===
+	docxErrors, err := p.getDocxErrors(limit/3, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get docx errors: %w", err)
+	}
+	errors = append(errors, docxErrors...)
+
+	// === ОШИБКИ ИЗ GOTENBERG_LOGS ===
+	gotenbergErrors, err := p.getGotenbergErrors(limit/3, since)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gotenberg errors: %w", err)
+	}
+	errors = append(errors, gotenbergErrors...)
+
+	return errors, nil
+}
+
+// getRequestErrors получает ошибки из request_logs
+func (p *PostgresDB) getRequestErrors(limit int, since time.Time) ([]ErrorDetails, error) {
+	rows, err := p.db.Query(`
+		SELECT 
+			id, timestamp, path, method, duration_ns
+		FROM request_logs
+		WHERE success = false AND timestamp >= $1
+		ORDER BY timestamp DESC
+		LIMIT $2
+	`, since.UTC(), limit)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var errors []ErrorDetails
+	for rows.Next() {
+		var e ErrorDetails
+		var id int64
+		var durationNs int64
+
+		err := rows.Scan(&id, &e.Timestamp, &e.HTTPPath, &e.HTTPMethod, &durationNs)
+		if err != nil {
+			return nil, err
+		}
+
+		// Генерируем уникальный Request ID на базе ID записи
+		e.RequestID = fmt.Sprintf("req_%d_%d", id, e.Timestamp.Unix())
+
+		e.Component = "api"
+		e.ErrorType = "request_failure"
+		e.Duration = time.Duration(durationNs)
+
+		// Более информативные сообщения на основе длительности
+		if e.Duration > 60*time.Second {
+			e.Severity = "high"
+			e.Message = fmt.Sprintf("Таймаут HTTP запроса: %s %s (%.2f сек)",
+				e.HTTPMethod, e.HTTPPath, e.Duration.Seconds())
+			e.HTTPStatus = 504 // Gateway Timeout
+		} else if e.Duration > 10*time.Second {
+			e.Severity = "medium"
+			e.Message = fmt.Sprintf("Медленный HTTP запрос с ошибкой: %s %s (%.2f сек)",
+				e.HTTPMethod, e.HTTPPath, e.Duration.Seconds())
+			e.HTTPStatus = 500
+		} else {
+			e.Severity = "medium"
+			e.Message = fmt.Sprintf("Быстрая ошибка HTTP запроса: %s %s (возможна ошибка валидации или подключения)",
+				e.HTTPMethod, e.HTTPPath)
+			e.HTTPStatus = 400
+		}
+
+		e.RequestDetails = map[string]interface{}{
+			"source":            "request_logs",
+			"type":              "statistical_error",
+			"duration_seconds":  e.Duration.Seconds(),
+			"duration_category": getDurationCategory(e.Duration),
+			"likely_cause":      getLikelyCause(e.HTTPPath, e.Duration),
+		}
+
+		errors = append(errors, e)
+	}
+
+	return errors, nil
+}
+
+// getDocxErrors получает ошибки из docx_logs
+func (p *PostgresDB) getDocxErrors(limit int, since time.Time) ([]ErrorDetails, error) {
+	rows, err := p.db.Query(`
+		SELECT 
+			id, timestamp, duration_ns
+		FROM docx_logs
+		WHERE has_error = true AND timestamp >= $1
+		ORDER BY timestamp DESC
+		LIMIT $2
+	`, since.UTC(), limit)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var errors []ErrorDetails
+	for rows.Next() {
+		var e ErrorDetails
+		var id int64
+		var durationNs int64
+
+		err := rows.Scan(&id, &e.Timestamp, &durationNs)
+		if err != nil {
+			return nil, err
+		}
+
+		// Генерируем уникальный Request ID на базе ID записи
+		e.RequestID = fmt.Sprintf("docx_%d_%d", id, e.Timestamp.Unix())
+
+		e.Component = "docx"
+		e.ErrorType = "generation_failure"
+		e.Duration = time.Duration(durationNs)
+		e.HTTPPath = "/api/v1/docx"
+		e.HTTPMethod = "POST"
+
+		// Анализ ошибки на основе длительности
+		if e.Duration < 1*time.Second {
+			e.Severity = "critical"
+			e.Message = "Критическая ошибка DOCX: мгновенный сбой (проблема с Python скриптом или файловой системой)"
+			e.HTTPStatus = 500
+		} else if e.Duration < 5*time.Second {
+			e.Severity = "high"
+			e.Message = fmt.Sprintf("Ошибка генерации DOCX: быстрый сбой (%.2f сек) - возможна проблема с шаблоном или данными", e.Duration.Seconds())
+			e.HTTPStatus = 422 // Unprocessable Entity
+		} else if e.Duration > 30*time.Second {
+			e.Severity = "high"
+			e.Message = fmt.Sprintf("Таймаут генерации DOCX: процесс завис (%.2f сек) - возможна проблема с Python или большим объемом данных", e.Duration.Seconds())
+			e.HTTPStatus = 504 // Gateway Timeout
+		} else {
+			e.Severity = "high"
+			e.Message = fmt.Sprintf("Ошибка генерации DOCX: стандартный сбой (%.2f сек) - проблема в логике обработки", e.Duration.Seconds())
+			e.HTTPStatus = 500
+		}
+
+		e.RequestDetails = map[string]interface{}{
+			"source":            "docx_logs",
+			"type":              "statistical_error",
+			"duration_seconds":  e.Duration.Seconds(),
+			"duration_category": getDurationCategory(e.Duration),
+			"likely_cause":      getDocxErrorCause(e.Duration),
+			"troubleshooting":   getDocxTroubleshooting(e.Duration),
+		}
+
+		errors = append(errors, e)
+	}
+
+	return errors, nil
+}
+
+// getGotenbergErrors получает ошибки из gotenberg_logs
+func (p *PostgresDB) getGotenbergErrors(limit int, since time.Time) ([]ErrorDetails, error) {
+	rows, err := p.db.Query(`
+		SELECT 
+			id, timestamp, duration_ns
+		FROM gotenberg_logs
+		WHERE has_error = true AND timestamp >= $1
+		ORDER BY timestamp DESC
+		LIMIT $2
+	`, since.UTC(), limit)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var errors []ErrorDetails
+	for rows.Next() {
+		var e ErrorDetails
+		var id int64
+		var durationNs int64
+
+		err := rows.Scan(&id, &e.Timestamp, &durationNs)
+		if err != nil {
+			return nil, err
+		}
+
+		// Генерируем уникальный Request ID на базе ID записи
+		e.RequestID = fmt.Sprintf("gotenberg_%d_%d", id, e.Timestamp.Unix())
+
+		e.Component = "gotenberg"
+		e.ErrorType = "conversion_failure"
+		e.Duration = time.Duration(durationNs)
+		e.HTTPPath = "/convert"
+		e.HTTPMethod = "POST"
+
+		// Анализ ошибки Gotenberg на основе длительности
+		if e.Duration < 2*time.Second {
+			e.Severity = "critical"
+			e.Message = "Критическая ошибка Gotenberg: мгновенный сбой (сервис недоступен или некорректный запрос)"
+			e.HTTPStatus = 503 // Service Unavailable
+		} else if e.Duration > 120*time.Second {
+			e.Severity = "high"
+			e.Message = fmt.Sprintf("Таймаут Gotenberg: конвертация зависла (%.0f сек) - возможна проблема с LibreOffice или большим файлом", e.Duration.Seconds())
+			e.HTTPStatus = 504 // Gateway Timeout
+		} else if e.Duration > 60*time.Second {
+			e.Severity = "medium"
+			e.Message = fmt.Sprintf("Медленная ошибка Gotenberg: долгая конвертация (%.0f сек) - возможно сложный документ", e.Duration.Seconds())
+			e.HTTPStatus = 500
+		} else {
+			e.Severity = "high"
+			e.Message = fmt.Sprintf("Ошибка конвертации Gotenberg: стандартный сбой (%.2f сек) - проблема с форматом или содержимым документа", e.Duration.Seconds())
+			e.HTTPStatus = 422 // Unprocessable Entity
+		}
+
+		e.RequestDetails = map[string]interface{}{
+			"source":            "gotenberg_logs",
+			"type":              "statistical_error",
+			"duration_seconds":  e.Duration.Seconds(),
+			"duration_category": getDurationCategory(e.Duration),
+			"likely_cause":      getGotenbergErrorCause(e.Duration),
+			"troubleshooting":   getGotenbergTroubleshooting(e.Duration),
+		}
+
+		errors = append(errors, e)
+	}
+
+	return errors, nil
 }

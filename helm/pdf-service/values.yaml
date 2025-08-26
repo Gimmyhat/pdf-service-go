@@ -2,12 +2,18 @@
 global:
   environment: test
   namespace: print-serv
+  
+# Имя ресурсов, чтобы соответствовать nas-*
+fullnameOverride: nas-pdf-service
 
-# Настройки образа
+# Настройки образа (по умолчанию DevOps RO; конкретный репозиторий и тег могут переопределяться через --set)
 image:
-  repository: gimmyhat/pdf-service-go
+  repository: registry.devops.rgf.local/gimmyhat/pdf-service-go
   tag: latest
   pullPolicy: Always
+
+# По умолчанию секрет не нужен для RO (анонимный pull). Для RW/прокси можно переопределить в values-*.yaml
+imagePullSecrets: []
 
 # Настройки развертывания
 deployment:
@@ -66,7 +72,7 @@ gotenberg:
 
 # Настройки PostgreSQL
 postgresql:
-  enabled: true
+  enabled: false
   auth:
     database: pdf_service
     username: pdf_service
@@ -77,14 +83,14 @@ postgresql:
 
 # Настройки Prometheus
 prometheus:
-  enabled: true
+  enabled: false
   server:
     persistentVolume:
       size: 8Gi
 
 # Настройки Grafana
 grafana:
-  enabled: true
+  enabled: false
   persistence:
     enabled: true
     size: 1Gi
@@ -96,7 +102,7 @@ grafana:
 
 # Настройки Jaeger
 jaeger:
-  enabled: true
+  enabled: false
   storage:
     type: memory
 
@@ -113,4 +119,3 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 5
   targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80 

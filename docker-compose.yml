@@ -1,6 +1,6 @@
 services:
   pdf-service:
-    image: gimmyhat/pdf-service-go:${VERSION:-latest}
+    image: registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go:${VERSION:-latest}
     ports:
       - "8080:8080"
     volumes:
@@ -9,6 +9,7 @@ services:
     environment:
       - GIN_MODE=release
       - GOTENBERG_URL=http://gotenberg:3000
+      - GOTENBERG_CLIENT_TIMEOUT=60s
       - LOG_LEVEL=debug
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -46,25 +47,33 @@ services:
         condition: service_started
 
   gotenberg:
-    image: gotenberg/gotenberg:7.10
+    image: registry-irk-rw.devops.rgf.local/gotenberg/gotenberg:7.10
     ports:
       - "3000:3000"
     environment:
       - GOTENBERG_MAX_WORKERS=4
       - GOTENBERG_CHROMIUM_MAX_QUEUE_SIZE=10
       - GOTENBERG_LIBREOFFICE_MAX_QUEUE_SIZE=10
-      - GOTENBERG_DEFAULT_WAIT_TIMEOUT=30
+      - GOTENBERG_DEFAULT_WAIT_TIMEOUT=60
       - GOTENBERG_DEFAULT_WAIT_DELAY=1
     command:
       - "gotenberg"
       - "--api-port=3000"
       - "--api-timeout=60s"
+      - "--libreoffice-start-timeout=60s"
+      - "--api-start-timeout=60s"
+      - "--chromium-start-timeout=60s"
+      - "--gotenberg-graceful-shutdown-duration=60s"
+      - "--webhook-client-timeout=60s"
       - "--chromium-disable-javascript=true"
       - "--chromium-allow-list=file:///tmp/.*"
-      - "--libreoffice-restart-after=0"
+      - "--libreoffice-restart-after=10"
+      - "--api-trace-header=X-Request-ID"
+      - "--log-level=info"
+      - "--log-format=json"
 
   postgres:
-    image: postgres:15
+    image: registry-irk-rw.devops.rgf.local/postgres:15
     ports:
       - "5432:5432"
     environment:
@@ -80,7 +89,7 @@ services:
       retries: 5
 
   jaeger:
-    image: jaegertracing/all-in-one:1.47
+    image: registry-irk-rw.devops.rgf.local/jaegertracing/all-in-one:1.54
     ports:
       - "16686:16686"  # UI
       - "4317:4317"    # OTLP gRPC

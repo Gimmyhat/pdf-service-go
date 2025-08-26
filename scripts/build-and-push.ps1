@@ -24,15 +24,15 @@ if (-not $Version) {
 Write-Host "Building Docker image with tag: $Version"
 
 # Собираем образ
-docker build -t "gimmyhat/pdf-service-go:$Version" .
+docker build -t "registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go:$Version" .
 if ($LASTEXITCODE -ne 0) {
     throw "Ошибка при сборке Docker образа"
 }
 
-Write-Host "Pushing Docker image to Docker Hub"
+Write-Host "Pushing Docker image to Nexus"
 
 # Отправляем образ
-docker push "gimmyhat/pdf-service-go:$Version"
+docker push "registry-irk-rw.devops.rgf.local/gimmyhat/pdf-service-go:$Version"
 if ($LASTEXITCODE -ne 0) {
     throw "Ошибка при отправке Docker образа"
 }
